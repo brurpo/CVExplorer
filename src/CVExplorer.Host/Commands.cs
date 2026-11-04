@@ -370,6 +370,61 @@ public static class Commands
             return Task.FromResult<object?>(resultado);
         });
 
+        // Pastas do modelo que fazem sentido dentro desta pasta (menu "Novo").
+        // Casa pelo nome da pasta ou, quando ela é um quadro, pelo token {QUADRO}.
+        Add("project.filhosModelo", (args, _) =>
+        {
+            var caminho = Str(args, "caminho");
+            if (string.IsNullOrWhiteSpace(caminho) || !Directory.Exists(caminho))
+            {
+                return Task.FromResult<object?>(new { filhos = Array.Empty<object>() });
+            }
+
+            var nos = TemplateCatalog.AllNodes(host.Template);
+            var nome = Path.GetFileName(caminho.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            var pai = Path.GetDirectoryName(caminho.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            var nomePai = string.IsNullOrEmpty(pai) ? null : Path.GetFileName(pai);
+
+            var no = nos.FirstOrDefault(n => n.Nome.Equals(nome, StringComparison.OrdinalIgnoreCase));
+
+            if (no is null && nomePai is not null)
+            {
+                var noPai = nos.FirstOrDefault(n => n.Nome.Equals(nomePai, StringComparison.OrdinalIgnoreCase));
+                no = noPai?.Filhos.FirstOrDefault(f =>
+                    f.Nome.Equals(TemplateCatalog.QuadroToken, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (no is null || no.Filhos.Count == 0)
+            {
+                return Task.FromResult<object?>(new { filhos = Array.Empty<object>() });
+            }
+
+            var existentes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                foreach (var pasta in Directory.EnumerateDirectories(caminho))
+                {
+                    existentes.Add(Path.GetFileName(pasta));
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"Falha ao listar pastas de {caminho}", ex);
+            }
+
+            var filhos = no.Filhos
+                .Where(f => !f.Nome.Equals(TemplateCatalog.QuadroToken, StringComparison.OrdinalIgnoreCase))
+                .Select(f => new
+                {
+                    nome = f.Nome,
+                    existe = existentes.Contains(f.Nome),
+                    temFilhos = f.Filhos.Count > 0,
+                })
+                .ToList();
+
+            return Task.FromResult<object?>(new { origem = no.Nome, filhos });
+        });
+
         // ---------- busca ----------
 
         Add("search.start", async (args, ct) =>

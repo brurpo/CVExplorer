@@ -153,12 +153,27 @@ export function menuContexto(x, y, itens) {
   el.replaceChildren();
 
   let submenu = null;
+  let fecharSubmenuAgendado = null;
+
+  function limparAgendamento() {
+    if (fecharSubmenuAgendado) {
+      clearTimeout(fecharSubmenuAgendado);
+      fecharSubmenuAgendado = null;
+    }
+  }
 
   function fecharSubmenu() {
+    limparAgendamento();
     if (submenu) {
       submenu.remove();
       submenu = null;
     }
+  }
+
+  /** Fechar com atraso: dá tempo de atravessar o vão entre o item e o submenu. */
+  function agendarFecharSubmenu() {
+    limparAgendamento();
+    fecharSubmenuAgendado = setTimeout(fecharSubmenu, 260);
   }
 
   function abrirSubmenu(botao, lista) {
@@ -167,6 +182,11 @@ export function menuContexto(x, y, itens) {
     const sub = document.createElement('div');
     sub.className = 'menu-contexto';
     sub.dataset.submenu = '1';
+    // O ponteiro pode passar pelo vão entre o menu e o submenu sem fechá-lo.
+    sub.addEventListener('mouseenter', limparAgendamento);
+    sub.addEventListener('mouseleave', (e) => {
+      if (!sub.contains(e.relatedTarget)) agendarFecharSubmenu();
+    });
     preencher(sub, lista);
     document.body.appendChild(sub);
 
@@ -217,10 +237,19 @@ export function menuContexto(x, y, itens) {
       }
 
       if (item.submenu) {
-        botao.addEventListener('mouseenter', () => abrirSubmenu(botao, item.submenu));
+        botao.addEventListener('mouseenter', () => {
+          limparAgendamento();
+          abrirSubmenu(botao, item.submenu);
+        });
+        botao.addEventListener('mouseleave', (e) => {
+          // Saindo para fora do menu inteiro (e não para o submenu): fecha depois.
+          if (!container.contains(e.relatedTarget) && !submenu?.contains(e.relatedTarget)) {
+            agendarFecharSubmenu();
+          }
+        });
         botao.addEventListener('click', () => abrirSubmenu(botao, item.submenu));
       } else {
-        botao.addEventListener('mouseenter', fecharSubmenu);
+        botao.addEventListener('mouseenter', agendarFecharSubmenu);
         botao.addEventListener('click', () => {
           fechar();
           item.acao?.();

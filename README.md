@@ -50,6 +50,8 @@ git push origin v0.1.0
 O workflow [.github/workflows/release.yml](.github/workflows/release.yml) roda os testes,
 compila, empacota com Velopack e publica a release. O app verifica essa release sozinho
 (`Velopack` + `GithubSource`) e mostra o botão **Atualizar** quando há versão nova.
+**Verificar atualizações vem ligado por padrão** (`VerificarAtualizacoes = true`); desligar é
+uma escolha em Configurações, não o contrário.
 
 > Troque `SEU-USUARIO` em [AppInfo.cs](src/CVExplorer.Host/AppInfo.cs) — ou apenas use o
 > workflow, que injeta a URL real do repositório no build (`-p:RepositorioUrl=...`).
@@ -65,8 +67,9 @@ No estilo do Explorer, sem lista de projetos:
 - **Favoritos**: pastas e arquivos que você fixa. Arraste itens da lista para cá (ou use o `+`) e
   remova pelo menu de contexto. Pasta abre na navegação; arquivo abre no app padrão. Ficam em
   `config.json` → `Favoritos`.
-- **Este Computador**: unidades com **letra**, rótulo, espaço livre e o **tipo** (`Rede` para
-  mapeadas/UNC, `Local` para fixas). Pastas adicionadas em *Raízes* aparecem como pastas.
+- **Este Computador**: unidades com **letra**, rótulo, espaço livre, **ícone** (disco empilhado para
+  local, globo em azul para rede) e o **tipo** (`Rede` para mapeadas/UNC, `Local` para fixas).
+  Pastas adicionadas em *Raízes* aparecem como pastas.
 - Ícone de pasta em **amarelo**: com o acervo em tons de cinza, a pasta desaparecia no meio das
   miniaturas coloridas.
 
@@ -111,10 +114,18 @@ No estilo do Explorer, sem lista de projetos:
   (*substituir / manter ambos / pular / cancelar*, com "aplicar a todos").
 - Cópia progressiva com cancelamento; nomes nunca colidem (`arquivo (2).ext`).
 - Exclusão vai para a **Lixeira**.
-- **Pré-visualização lateral** com imagem em tamanho real (PSD, EXR, TIFF, SVG…), player de vídeo
-  e metadados (tamanho, modificado, **criado em**, tipo, caminho). A largura do painel é arrastável
-  (divisória à esquerda; duplo clique volta ao padrão) e a grade recalcula as colunas ao abrir/fechar —
-  sem telha cortada na borda.
+- **Pré-visualização lateral sempre no lugar**: o painel abre junto com o app e fica visível (com
+  estado vazio) até você recolher — pelo **⟩** do painel ou pelo botão no topo. Nada de abrir/fechar
+  sozinho: era isso que roubava largura da grade e fazia o duplo clique acertar outro arquivo
+  (a linha se mexia embaixo do cursor). Mostra imagem em tamanho real (PSD, EXR, TIFF, SVG…),
+  player de vídeo e metadados (tamanho, modificado, **criado em**, tipo, caminho). A largura é
+  arrastável (divisória à esquerda; duplo clique volta ao padrão) e o estado é lembrado.
+- **Slider de miniaturas no rodapé**: controla o tamanho das telhas da grade ao vivo (96–340 px),
+  e o valor fica salvo em `TamanhoGrade`.
+- **Menu "Novo" nas pastas**: ao clicar com o botão direito numa pasta, o submenu **Novo ▸** lista as
+  subpastas que o *modelo do projeto* prevê para aquela pasta — inclusive quando ela é um **quadro**
+  (casa pelo token `{QUADRO}` do pai). O que já existe aparece como *"já existe"* e desabilitado,
+  então não há duplicata. Sempre há também *Pasta em branco…*.
 - Escalas de Windows são respeitadas: o app é *per monitor v2*, então arraste de coluna, divisória
   e cursor usam as mesmas unidades (px de CSS) em 100%, 150% ou 200%.
 

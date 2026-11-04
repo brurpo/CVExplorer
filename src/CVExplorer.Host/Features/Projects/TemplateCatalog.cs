@@ -158,6 +158,29 @@ public static class TemplateCatalog
         return result;
     }
 
+    /// <summary>Todos os nós da árvore, em profundidade (usado para casar pasta com modelo).</summary>
+    public static List<TemplateNode> AllNodes(List<TemplateNode> nodes)
+    {
+        var result = new List<TemplateNode>();
+
+        void Walk(IEnumerable<TemplateNode> level)
+        {
+            foreach (var node in level)
+            {
+                if (string.IsNullOrWhiteSpace(node.Nome))
+                {
+                    continue;
+                }
+
+                result.Add(node);
+                Walk(node.Filhos);
+            }
+        }
+
+        Walk(nodes);
+        return result;
+    }
+
     public static List<TemplateNode> LoadOrSeed(string filePath)
     {
         try

@@ -44,6 +44,9 @@
     </div>
 
     <div class="actions">
+      <button id="btn-preview" class="icon-btn ativo" data-i18n-title="acoes.previa">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+      </button>
       <button id="btn-atualizar" class="icon-btn" data-i18n-title="acoes.atualizar">
         <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" /></svg>
       </button>
@@ -93,12 +96,12 @@
       </div>
     </main>
 
-    <div id="divisor-preview" class="divisor-preview" hidden></div>
+    <div id="divisor-preview" class="divisor-preview"></div>
 
-    <aside id="preview" class="preview" hidden>
+    <aside id="preview" class="preview">
       <header class="preview-header">
         <span id="preview-nome" class="preview-nome"></span>
-        <button id="preview-fechar" class="mini-btn">×</button>
+        <button id="preview-fechar" class="mini-btn" data-i18n-title="preview.recolher">⟩</button>
       </header>
       <div id="preview-corpo" class="preview-corpo"></div>
       <footer id="preview-meta" class="preview-meta"></footer>
@@ -110,6 +113,10 @@
     <span id="status-selecao" class="status-item"></span>
     <span class="status-spacer"></span>
     <span id="status-busca" class="status-item"></span>
+    <span class="status-zoom" id="status-zoom">
+      <svg viewBox="0 0 24 24" class="status-zoom-icone"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      <input id="slider-grade" class="status-slider" type="range" min="96" max="340" step="4" data-i18n-title="acoes.tamanhoMiniatura" />
+    </span>
     <span id="status-espaco" class="status-item"></span>
     <span id="status-versao" class="status-item muted"></span>
   </footer>

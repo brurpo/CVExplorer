@@ -1,4 +1,4 @@
-import { call, on } from './bridge.js';
+﻿import { call, on } from './bridge.js';
 import { t } from './i18n.js';
 import * as fmt from './format.js';
 import * as ui from './ui.js';
@@ -44,6 +44,7 @@ export function iniciarExplorer() {
   area.addEventListener('contextmenu', aoMenuContexto);
   area.addEventListener('scroll', desenhar, { passive: true });
   document.addEventListener('keydown', aoTeclar);
+  iniciarSliderGrade();
   window.addEventListener('resize', () => {
     medirBarraRolagem();
     desenhar();
@@ -112,7 +113,7 @@ export function iniciarExplorer() {
   on('os.drop', async (dados) => {
     if (!dados?.caminhos?.length) return;
 
-    // Solto do Explorer em cima dos Favoritos: vira favorito, não cola arquivo.
+    // Solto do Explorer em cima dos Favoritos: vira favorito, nÃ£o cola arquivo.
     if (Number.isFinite(dados.x) && Number.isFinite(dados.y)) {
       const escala = window.devicePixelRatio || 1;
       if (lateral.alvoFavoritos(dados.x / escala, dados.y / escala)) {
@@ -286,7 +287,7 @@ function mostrarAlvoArraste(dados) {
   overlay.querySelector('.arraste-pasta').textContent = dados.pasta ?? '';
 }
 
-// ---------- navegação ----------
+// ---------- navegaÃ§Ã£o ----------
 
 export async function navegar(caminho, { historico = true } = {}) {
   if (!caminho) return;
@@ -296,7 +297,7 @@ export async function navegar(caminho, { historico = true } = {}) {
   state.itens = [];
   state.carregando = true;
   limparSelecao();
-  preview.fechar();
+  preview.limpar();
   area.scrollTop = 0;
   desenhar();
 
@@ -398,14 +399,14 @@ function desenharMigalhas(partes, compacto) {
     if (indice > 0) {
       const sep = document.createElement('span');
       sep.className = 'migalha-sep';
-      sep.textContent = '›';
+      sep.textContent = 'â€º';
       migalhas.appendChild(sep);
     }
 
     if (parte === null) {
       const reticencias = document.createElement('button');
       reticencias.className = 'migalha';
-      reticencias.textContent = '…';
+      reticencias.textContent = 'â€¦';
       reticencias.title = t('endereco.editar');
       reticencias.addEventListener('click', entrarEdicaoEndereco);
       migalhas.appendChild(reticencias);
@@ -449,7 +450,7 @@ function partesDeCaminho(caminho) {
   return partes;
 }
 
-// ---------- renderização ----------
+// ---------- renderizaÃ§Ã£o ----------
 
 function desenhar() {
   if (agendado) return;
@@ -541,12 +542,12 @@ function atualizarSetasOrdenacao() {
     celula.classList.toggle('ordenado', ativo);
     const seta = celula.querySelector('.seta');
     if (seta) {
-      seta.textContent = ativo ? (state.ordenacao.desc ? '▼' : '▲') : '';
+      seta.textContent = ativo ? (state.ordenacao.desc ? 'â–¼' : 'â–²') : '';
     }
   }
 }
 
-// ---------- colunas redimensionáveis ----------
+// ---------- colunas redimensionÃ¡veis ----------
 
 const COLUNAS = {
   nome: { min: 120, max: 2400, padrao: 340, variavel: '--w-nome' },
@@ -804,7 +805,7 @@ function criarTelha(item, coluna, linha, largura, altura, alturaLinha) {
         const img = document.createElement('img');
         img.src = url;
         img.alt = '';
-        // Troca só o ícone: replaceChildren apagaria o selo de formato.
+        // Troca sÃ³ o Ã­cone: replaceChildren apagaria o selo de formato.
         thumb.replaceChild(img, iconeEl);
       });
     }
@@ -813,7 +814,7 @@ function criarTelha(item, coluna, linha, largura, altura, alturaLinha) {
   if (!ehPasta) {
     const badge = document.createElement('span');
     badge.className = 'tile-badge';
-    badge.textContent = ext || '•';
+    badge.textContent = ext || 'â€¢';
     thumb.appendChild(badge);
   }
 
@@ -885,8 +886,33 @@ function renderizarLista(itens) {
   area.appendChild(fragmento);
 }
 
-function atualizarStatus() {
-  const itens = itensAtuais();
+// ---------- tamanho das miniaturas ----------
+
+let salvarGradeAgendado = null;
+
+function iniciarSliderGrade() {
+  const slider = document.getElementById('slider-grade');
+  if (!slider) return;
+
+  slider.value = String(state.grade ?? 168);
+
+  slider.addEventListener('input', () => {
+    const valor = Number(slider.value);
+    if (!Number.isFinite(valor)) return;
+
+    state.grade = valor;
+    // Só a grade usa o tamanho: em lista o slider não muda nada, mas o valor fica guardado.
+    if (state.visao === 'grade') desenhar();
+
+    if (salvarGradeAgendado) clearTimeout(salvarGradeAgendado);
+    salvarGradeAgendado = setTimeout(() => {
+      state.config.TamanhoGrade = state.grade;
+      call('settings.save', state.config).catch(() => {});
+    }, 500);
+  });
+}
+
+function atualizarStatus() {  const itens = itensAtuais();
   document.getElementById('status-itens').textContent = state.carregando
     ? t('status.carregando')
     : t('status.itens', { n: itens.length });
@@ -907,7 +933,7 @@ function atualizarStatus() {
   }
 }
 
-// ---------- seleção ----------
+// ---------- seleÃ§Ã£o ----------
 
 function aoClicar(evento) {
   const alvo = evento.target.closest('[data-caminho]');
@@ -916,7 +942,7 @@ function aoClicar(evento) {
     if (!evento.ctrlKey && !evento.metaKey) {
       limparSelecao();
       aplicarSelecao();
-      preview.fechar();
+      preview.limpar();
     }
     return;
   }
@@ -972,8 +998,8 @@ function abrir(item) {
 
 // ---------- menu de contexto ----------
 
-// Sequências são detectadas no host; guardamos o resultado por caminho para o menu
-// já mostrar a contagem de quadros sem esperar o clique.
+// SequÃªncias sÃ£o detectadas no host; guardamos o resultado por caminho para o menu
+// jÃ¡ mostrar a contagem de quadros sem esperar o clique.
 const sequencias = new Map();
 
 function prefetchSequencia(lista) {
@@ -994,7 +1020,7 @@ function itensConverterPara(primeiro) {
     ...grupo.itens.map((preset) => {
       const indisponivel = dialogs.presetIndisponivel(preset.chave);
       return {
-        rotulo: indisponivel ? `${preset.rotulo} — ${t('menu.indisponivelCurto')}` : preset.rotulo,
+        rotulo: indisponivel ? `${preset.rotulo} â€” ${t('menu.indisponivelCurto')}` : preset.rotulo,
         dica: indisponivel ? t('menu.indisponivelMotivo') : '',
         desabilitado: indisponivel,
         acao: () => dialogs.converterVideo(primeiro, state.config, preset.chave),
@@ -1003,7 +1029,7 @@ function itensConverterPara(primeiro) {
   ]);
 }
 
-function aoMenuContexto(evento) {
+async function aoMenuContexto(evento) {
   evento.preventDefault();
   const alvo = evento.target.closest('[data-caminho]');
 
@@ -1066,6 +1092,7 @@ function aoMenuContexto(evento) {
       itens.push(
         { rotulo: t('menu.registrarProjeto'), acao: () => dialogs.registrarProjeto(primeiro.Caminho ?? primeiro.caminho) },
         { rotulo: t('menu.criarPastasModelo'), acao: () => dialogs.pastasModelo(primeiro.Caminho ?? primeiro.caminho, recarregar) },
+        { rotulo: t('menu.novo'), submenu: await submenuNovo(primeiro.Caminho ?? primeiro.caminho) },
       );
     }
 
@@ -1075,10 +1102,14 @@ function aoMenuContexto(evento) {
       acao: () => navigator.clipboard?.writeText(selecao.map((i) => i.Caminho ?? i.caminho).join('\n')),
     });
   } else {
-    itens.push({ rotulo: t('menu.novaPasta'), acao: novaPasta });
+    itens.push({ rotulo: t('menu.novaPasta'), acao: () => novaPasta() });
     itens.push({ rotulo: t('menu.colar'), atalho: 'Ctrl+V', acao: colar });
     itens.push({ separador: true });
     itens.push({ rotulo: t('menu.novoProjeto'), acao: () => dialogs.novoProjeto(state.caminho, criado) });
+
+    if (state.caminho) {
+      itens.push({ rotulo: t('menu.novo'), submenu: await submenuNovo(state.caminho) });
+    }
   }
 
   ui.menuContexto(evento.clientX, evento.clientY, itens);
@@ -1089,10 +1120,10 @@ function criado(caminho) {
   if (caminho) navegar(caminho);
 }
 
-// ---------- ações ----------
+// ---------- aÃ§Ãµes ----------
 
-async function novaPasta() {
-  if (!state.caminho) return;
+async function novaPasta(pai = state.caminho) {
+  if (!pai) return;
   const nome = await dialogs.pedirTexto({
     titulo: t('menu.novaPasta'),
     rotulo: t('projeto.nome'),
@@ -1100,13 +1131,43 @@ async function novaPasta() {
   });
   if (!nome) return;
 
+  await criarPasta(pai, nome);
+}
+
+async function criarPasta(pai, nome) {
   try {
-    const resultado = await call('fs.mkdir', { pai: state.caminho, nome });
+    const resultado = await call('fs.mkdir', { pai, nome });
     ui.toast(t('toast.pastaCriada', { nome: fmt.nomearArquivo(resultado.caminho) }), 'ok');
     recarregar();
   } catch (erro) {
     ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
   }
+}
+
+/** Submenu "Novo": pastas do modelo que fazem sentido dentro desta pasta. */
+async function submenuNovo(pasta) {
+  const itens = [{ rotulo: t('menu.pastaEmBranco'), acao: () => novaPasta(pasta) }];
+
+  let filhos = [];
+  try {
+    const resposta = await call('project.filhosModelo', { caminho: pasta });
+    filhos = resposta?.filhos ?? [];
+  } catch {
+    filhos = [];
+  }
+
+  if (filhos.length) {
+    itens.push({ separador: true });
+    for (const filho of filhos) {
+      itens.push({
+        rotulo: filho.existe ? `${filho.nome} — ${t('menu.jaExiste')}` : filho.nome,
+        desabilitado: filho.existe,
+        acao: () => criarPasta(pasta, filho.nome),
+      });
+    }
+  }
+
+  return itens;
 }
 
 async function renomearSelecionado() {
@@ -1150,7 +1211,7 @@ async function excluirSelecionado() {
     await call('fs.delete', { caminhos: selecao.map((i) => i.Caminho ?? i.caminho) });
     ui.toast(t('toast.excluido', { n: selecao.length }), 'ok');
     limparSelecao();
-    preview.fechar();
+    preview.limpar();
     recarregar();
   } catch (erro) {
     ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
@@ -1214,7 +1275,7 @@ async function colarCaminhos(caminhos, recortarItens) {
       call('settings.save', state.config).catch(() => {});
     }
 
-    // "Colar original": o arquivo entra como está, sem reencode.
+    // "Colar original": o arquivo entra como estÃ¡, sem reencode.
     converter = escolha.acao === 'converter';
   }
 
@@ -1323,7 +1384,7 @@ function sairDaBusca({ silencioso = false } = {}) {
   }
 }
 
-// ---------- visualização ----------
+// ---------- visualizaÃ§Ã£o ----------
 
 function alternarVisao() {
   state.visao = state.visao === 'grade' ? 'lista' : 'grade';
@@ -1384,7 +1445,7 @@ function aoTeclar(evento) {
   if (evento.key === 'Backspace') { evento.preventDefault(); subir(); return; }
   if (evento.key === 'Escape') {
     if (state.busca.ativa) { buscaInput.value = ''; sairDaBusca(); }
-    else { limparSelecao(); aplicarSelecao(); preview.fechar(); }
+    else { limparSelecao(); aplicarSelecao(); preview.limpar(); }
     return;
   }
 
@@ -1446,7 +1507,7 @@ export function focoBusca() {
   buscaInput.select();
 }
 
-// ---------- barra de endereço editável ----------
+// ---------- barra de endereÃ§o editÃ¡vel ----------
 
 function iniciarEndereco() {
   areaEndereco.addEventListener('dblclick', (evento) => {
@@ -1505,7 +1566,7 @@ async function irParaEndereco() {
   }
 }
 
-// ---------- digitação rápida (type-ahead) ----------
+// ---------- digitaÃ§Ã£o rÃ¡pida (type-ahead) ----------
 
 function normalizarTexto(texto) {
   return (texto ?? '')
@@ -1527,7 +1588,7 @@ function tratarDigitacao(caractere) {
 
   const prefixo = normalizarTexto(bufferDigitacao);
   const atual = state.ancora ?? -1;
-  // Primeira letra: avança para a próxima combinação. Refinando: mantém a atual.
+  // Primeira letra: avanÃ§a para a prÃ³xima combinaÃ§Ã£o. Refinando: mantÃ©m a atual.
   const inicio = atual < 0 ? 0 : (novaSessao ? atual + 1 : atual);
 
   for (let passo = 0; passo < itens.length; passo++) {

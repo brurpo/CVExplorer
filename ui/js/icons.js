@@ -28,6 +28,25 @@ const SVG = {
   outro: DOCUMENTO,
 };
 
+// Unidade local (dois discos empilhados) e unidade de rede (globo), para a lateral
+// distinguir de relance o que está na máquina do que está no servidor.
+const DISCO_LOCAL =
+  '<rect x="3" y="4.5" width="18" height="6.4" rx="1.8"/>'
+  + '<rect x="3" y="13.1" width="18" height="6.4" rx="1.8"/>'
+  + '<circle cx="6.6" cy="7.7" r="0.9" fill="currentColor" stroke="none"/>'
+  + '<circle cx="6.6" cy="16.3" r="0.9" fill="currentColor" stroke="none"/>';
+
+const DISCO_REDE =
+  '<circle cx="12" cy="12" r="8.6"/>'
+  + '<path d="M3.6 9.2h16.8M3.6 14.8h16.8"/>'
+  + '<path d="M12 3.4c2.7 2.6 2.7 14.6 0 17.2M12 3.4c-2.7 2.6-2.7 14.6 0 17.2"/>';
+
+/** Ícone da unidade: rede ou local. */
+export function iconeUnidade(tipo) {
+  const desenho = tipo === 'rede' ? DISCO_REDE : DISCO_LOCAL;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">${desenho}</svg>`;
+}
+
 /**
  * @param {string} categoria categoria vinda de format.categoria()
  * @param {string} [ext] extensão, para casos como .ai/.svg

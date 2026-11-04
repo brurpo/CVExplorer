@@ -329,6 +329,8 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
 
 .side-icone { display: grid; place-items: center; flex: 0 0 auto; }
 .side-icone svg { width: 16px; height: 16px; }
+.side-icone.unidade svg { width: 15px; height: 15px; color: var(--muted); }
+.side-icone.unidade[data-tipo="rede"] svg { color: var(--accent); }
 .side-icone .icone-tipo { width: 17px; height: 17px; object-fit: contain; }
 .side-icone[data-cat="pasta"] .icone-tipo {
   filter: sepia(1) saturate(3.2) hue-rotate(4deg) brightness(1.14);
@@ -853,6 +855,53 @@ body.arrastando .row, body.arrastando .telha { cursor: grabbing; }
 
 .status-spacer { flex: 1; }
 .status-item.destaque { color: var(--accent-strong); }
+
+/* Slider de tamanho das miniaturas, no rodapé */
+.status-zoom {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.status-zoom-icone {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: var(--muted-2);
+  stroke-width: 1.7;
+  flex: none;
+}
+
+.status-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 120px;
+  height: 14px;
+  background: none;
+  cursor: pointer;
+}
+
+.status-slider::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+
+.status-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+  transition: transform 0.12s ease;
+}
+
+.status-slider:hover::-webkit-slider-thumb { transform: scale(1.15); }
+.status-slider:focus-visible { outline: none; }
+.status-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--accent-dim); }
 
 /* ---------- toasts ---------- */
 .toasts {

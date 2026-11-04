@@ -13,38 +13,54 @@ const IMAGENS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif', 'tif
 
 const LARGURA_PADRAO = 320;
 const LARGURA_MINIMA = 240;
+const CHAVE_ABERTO = 'cvexplorer:previewAberto';
 
-export function fechar() {
-  const estavaVisivel = !painel.hidden;
-  painel.hidden = true;
-  divisor.hidden = true;
-  fecharJogador();
-  corpoEl.classList.remove('com-player');
-  corpoEl.replaceChildren();
-  metaEl.replaceChildren();
+/**
+ * O painel fica sempre no lugar: abrir/fechar sozinho mudava a largura da grade e,
+ * ao tentar dar duplo clique num item, o alvo se movia. Quem decide é o usuário
+ * (botão da barra, o ⟩ do painel ou o divisor).
+ */
+export function alternar(forcar) {
+  const abrir = forcar === undefined ? painel.hidden : Boolean(forcar);
+  painel.hidden = !abrir;
+  divisor.hidden = !abrir;
+  document.getElementById('btn-preview')?.classList.toggle('ativo', abrir);
 
-  if (estavaVisivel) document.dispatchEvent(new CustomEvent('layout'));
+  try {
+    localStorage.setItem(CHAVE_ABERTO, abrir ? '1' : '0');
+  } catch {
+    // sem localStorage: só não persiste
+  }
+
+  document.dispatchEvent(new CustomEvent('layout'));
+  return abrir;
 }
 
-function abrir() {
-  const jaVisivel = !painel.hidden;
-  painel.hidden = false;
-  divisor.hidden = false;
+export function estaAberto() {
+  return !painel.hidden;
+}
 
-  // A prévia rouba largura da lista: a grade precisa recalcular as colunas,
-  // senão as telhas ficam cortadas na borda.
-  if (!jaVisivel) document.dispatchEvent(new CustomEvent('layout'));
+/** Estado vazio: nada selecionado (o painel continua visível). */
+export function limpar() {
+  fecharJogador();
+  corpoEl.classList.remove('com-player');
+  nomeEl.textContent = '';
+  nomeEl.title = '';
+  corpoEl.replaceChildren(placeholder(t('preview.selecione')));
+  metaEl.replaceChildren();
 }
 
 export async function mostrar(items) {
   if (items.length !== 1) {
     if (items.length > 1) {
-      abrir();
+      fecharJogador();
+      corpoEl.classList.remove('com-player');
       nomeEl.textContent = `${items.length} itens`;
+      nomeEl.title = '';
       corpoEl.replaceChildren(placeholder(t('preview.somenteUm')));
       metaEl.replaceChildren();
     } else {
-      fechar();
+      limpar();
     }
     return;
   }
@@ -55,7 +71,6 @@ export async function mostrar(items) {
   const ehPasta = item.Pasta ?? item.pasta;
   const ext = fmt.extensao(nome);
 
-  abrir();
   nomeEl.textContent = nome;
   nomeEl.title = caminho;
   fecharJogador();
@@ -121,6 +136,7 @@ async function mostrarVideo(item, caminho, nome) {
   const botaoTocar = document.createElement('button');
   botaoTocar.className = 'player-btn';
   botaoTocar.title = t('player.tocar');
+  botaoTocar.textContent = '▶';
 
   const barra = document.createElement('input');
   barra.type = 'range';
@@ -358,7 +374,17 @@ async function preencherMeta(item, caminho, ext) {
 }
 
 export function iniciarPreview() {
-  document.getElementById('preview-fechar').addEventListener('click', fechar);
+  document.getElementById('preview-fechar').addEventListener('click', () => alternar(false));
+  document.getElementById('btn-preview').addEventListener('click', () => alternar());
+
+  let abrir = true;
+  try {
+    abrir = localStorage.getItem(CHAVE_ABERTO) !== '0';
+  } catch {
+    // sem localStorage: abre por padrão
+  }
+
+  alternar(abrir);
   iniciarDivisor();
 }
 

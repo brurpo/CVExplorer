@@ -2,7 +2,7 @@ import { call } from './bridge.js';
 import { t } from './i18n.js';
 import * as fmt from './format.js';
 import * as ui from './ui.js';
-import { icone } from './icons.js';
+import { icone, iconeUnidade } from './icons.js';
 import { state } from './state.js';
 
 let aoNavegarExterno = () => {};
@@ -204,14 +204,22 @@ async function carregarDiscos(mostrarErro) {
       const etiqueta = disco.nome && disco.nome !== disco.letra ? disco.nome : '';
       const tipo = disco.tipo === 'rede' ? t('lateral.rede') : t('lateral.local');
 
-      lista.appendChild(criarItem({
+      const item = criarItem({
         rotulo: etiqueta ? `${letra} ${etiqueta}` : (letra || disco.nome),
         detalhe: disco.tipo === 'rede' ? tipo : (disco.livreTexto ?? tipo),
         titulo: `${disco.caminho} — ${tipo}`,
         caminho: disco.caminho,
         classe: disco.tipo === 'rede' ? 'disco rede' : 'disco',
         aoClicar: () => navegar(disco.caminho),
-      }));
+      });
+
+      const marca = document.createElement('span');
+      marca.className = 'side-icone unidade';
+      marca.dataset.tipo = disco.tipo === 'rede' ? 'rede' : 'local';
+      marca.innerHTML = iconeUnidade(disco.tipo === 'rede' ? 'rede' : 'local');
+      item.prepend(marca);
+
+      lista.appendChild(item);
     }
 
     if (!lista.children.length) {
