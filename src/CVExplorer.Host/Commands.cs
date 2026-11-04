@@ -435,8 +435,46 @@ public static class Commands
                 chave = resultado.Chave,
                 pronta = resultado.Pronta,
                 url = resultado.Pronta ? ThumbnailService.UrlFor(resultado.Chave) : null,
+                renderizar = resultado.Renderizar,
+                arquivoUrl = resultado.Renderizar is null ? null : host.Player.RegistrarArquivo(caminho),
             };
         }, operacao: true);
+
+        // A interface renderizou o modelo 3D: grava o WebP no mesmo cache das outras miniaturas.
+        Add("thumb.salvar", (args, _) =>
+        {
+            var chave = Str(args, "chave");
+            var dados = Str(args, "dados");
+
+            if (chave.Length != 20 || !chave.All(Uri.IsHexDigit))
+            {
+                return Task.FromResult<object?>(new { ok = false, erro = "chave invalida" });
+            }
+
+            const string prefixo = "data:image/webp;base64,";
+            if (!dados.StartsWith(prefixo, StringComparison.Ordinal))
+            {
+                return Task.FromResult<object?>(new { ok = false, erro = "formato invalido" });
+            }
+
+            try
+            {
+                var bytes = Convert.FromBase64String(dados[prefixo.Length..]);
+                if (bytes.Length is < 100 or > 8 * 1024 * 1024)
+                {
+                    return Task.FromResult<object?>(new { ok = false, erro = "tamanho invalido" });
+                }
+
+                var destino = Path.Combine(AppPaths.ThumbsDir, chave + ".webp");
+                File.WriteAllBytes(destino, bytes);
+                return Task.FromResult<object?>(new { ok = true, url = ThumbnailService.UrlFor(chave) });
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Falha ao salvar miniatura 3D", ex);
+                return Task.FromResult<object?>(new { ok = false, erro = ex.Message });
+            }
+        });
 
         // ---------- midia ----------
 

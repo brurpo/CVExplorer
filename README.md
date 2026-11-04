@@ -119,16 +119,40 @@ miniatura chega** (antes era apagado junto com o ícone).
 |---|---|
 | JPG, PNG, WEBP, GIF, BMP, TIFF, TGA, HEIC, JXL | Shell do Windows → Magick.NET |
 | **PSD / PSB** | handler do Photoshop (Shell) → Magick.NET (composição achatada) |
-| **AI** | handler do Illustrator (Shell) |
+| **AI / PDF** | **pdf.js desenha a primeira página** (o `.ai` é um PDF por dentro); Shell como reserva |
 | **SVG** | Magick.NET |
 | **EXR / HDR** | Magick.NET (com ajuste de exposição para não sair preta) |
-| **.blend** | **miniatura embutida no próprio arquivo** (bloco `TEST`, 128×128, instantânea, sem abrir o Blender) |
+| **.blend** | **miniatura embutida no próprio arquivo** (bloco `TEST`), lida antes do Shell — instantânea, sem abrir o Blender |
+| **OBJ, FBX, GLB, GLTF, STL, USDZ** | **render próprio em 3D** (three.js em Web Worker + WebGL), câmera em 3/4 |
 | MP4, MOV, MXF, AVI, MKV… | frame extraído com ffmpeg → Shell |
-| OBJ, FBX, GLB, GLTF, USD | ícone do tipo (ver [Limitações](#limitações)) |
+| USD, USDA, USDC, ABC, MA, MB, 3DS, DAE… | ícone do tipo (sem loader no app) |
 
-Cache em disco (`%LOCALAPPDATA%\CVExplorer\miniaturas`), chaveado por caminho + tamanho + data:
-o arquivo muda, a miniatura é refeita sozinha. Conversão para WebP, com limite de paralelismo
-e timeout por item (handlers de shell podem travar em rede).
+Cache em disco (`%LOCALAPPDATA%\CVExplorer\miniaturas`), chaveado por **caminho + tamanho + data
++ tamanho pedido + versão do pipeline** — quando o pipeline muda, o cache antigo é invalidado
+sozinho em vez de servir miniatura velha.
+
+### Como as miniaturas são paralelas
+
+Tudo que decodifica roda fora da thread da interface, em três filas independentes:
+
+| Etapa | Onde roda | Paralelismo |
+|---|---|---|
+| Decoders do host (Shell, Magick, .blend, ffmpeg) | pool de tarefas com `SemaphoreSlim` | `núcleos / 4`, entre **4 e 12** (era 6 no seu 32-núcleos; agora 8) |
+| `.glb/.obj/.stl/.usdz` | **Web Workers** com OffscreenCanvas | 2–3 workers (`hardwareConcurrency - 2`) |
+| `.ai/.pdf` | pdf.js | 3 por vez |
+| `.fbx` | thread da interface (FBXLoader usa `document` para texturas) | 1 por vez |
+
+Medido no app com um **GLB de 225 MB**: miniatura pronta em **1,57 s**, com o pior intervalo
+entre quadros da interface em **19 ms** — ou seja, a janela não congela enquanto o modelo é
+lido. Quatro modelos diferentes (FBX, OBJ, GLB) renderizados ao mesmo tempo: **640 ms** no total.
+
+Requisições repetidas do mesmo arquivo são deduplicadas por chave (uma geração só, mesmo com a
+grade pedindo duas vezes), e o arquivo 3D é servido ao renderizador por HTTP em loopback, sem
+copiar bytes para a memória do app.
+
+Bibliotecas embarcadas para desenhar miniaturas: **three.js** (MIT, ~1 MB em `ui/vendor/three`)
+e **pdf.js** (Apache-2.0, ~1,6 MB em `ui/vendor/pdfjs`). Ambas ficam no repositório — nada de CDN,
+então miniatura de 3D/PDF funciona offline.
 
 ---
 
@@ -330,8 +354,12 @@ verificam que colar vídeo produz **apenas** um `.mov` ProRes no destino.
 
 ## Limitações conhecidas
 
-- **USD / .usdc**: sem loader confiável em C#; hoje cai no ícone do tipo. `.usdz` pode ser
-  renderizado via three.js se adicionado no futuro.
+- **USD/USDA/USDC, ABC, MA/MB, 3DS, DAE**: sem loader no app; caem no ícone do tipo.
+  `.usdz` é renderizado, mas só quando o pacote é `usda` — `.usdz` com crate binário (usdc)
+  é recusado pelo three.js.
+- **FBX de animação sem malha** (ex.: clipes do Mixamo) não tem o que enquadrar: fica o ícone.
+- **Blender sem "Save Preview Images"**: o `.blend` não tem miniatura embutida e cai no ícone
+  do Blender. Renderizar abrindo o Blender seria dezenas de segundos por arquivo.
 - **Dolby Vision** e metadados estáticos HDR10 não sobrevivem à conversão para ProRes (limite do formato/ffmpeg).
 - ProRes 4444 no ffmpeg aceita entrada de até 10 bits.
 - O instalador e os binários **não são assinados**; o SmartScreen pode avisar na primeira execução.

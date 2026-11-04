@@ -27,14 +27,20 @@ $env:DOTNET_NOLOGO = "1"
 $exe = Join-Path $raiz "src\CVExplorer.Host\bin\Debug\net10.0-windows\CvExplorer.exe"
 
 if (-not $ManterAberta) {
-    Get-Process CvExplorer -ErrorAction SilentlyContinue | ForEach-Object {
-        Write-Host "Fechando a instancia aberta (pid $($_.Id))..." -ForegroundColor DarkGray
-        Stop-Process -Id $_.Id -Force
+    foreach ($processo in @(Get-Process CvExplorer -ErrorAction SilentlyContinue)) {
+        Write-Host "Fechando a instancia aberta (pid $($processo.Id))..." -ForegroundColor DarkGray
+        Stop-Process -Id $processo.Id -Force
+        try { [void]$processo.WaitForExit(3000) } catch { }
     }
 
     # O ffmpeg do player fica preso a janela: encerra junto.
     Get-Process ffmpeg -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.Id -Force }
-    Start-Sleep -Milliseconds 600
+
+    # Espera o mutex de instancia unica ser liberado, senao a nova janela sai na hora.
+    $limite = (Get-Date).AddSeconds(6)
+    while ((Get-Process CvExplorer -ErrorAction SilentlyContinue) -and (Get-Date) -lt $limite) {
+        Start-Sleep -Milliseconds 120
+    }
 }
 
 if (-not $SemBuild) {
@@ -43,7 +49,8 @@ if (-not $SemBuild) {
 }
 
 if ($Pasta) {
-    Start-Process -FilePath $exe -ArgumentList @($Pasta)
+    # Aspas obrigatorias: "NOVEMBRO AZUL" tem espaco e viraria tres argumentos.
+    Start-Process -FilePath $exe -ArgumentList @("`"$Pasta`"")
 } else {
     Start-Process -FilePath $exe
 }

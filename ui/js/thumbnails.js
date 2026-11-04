@@ -1,10 +1,22 @@
 import { call } from './bridge.js';
+import * as thumb3d from './thumb3d.js';
+import * as thumbPdf from './thumbPdf.js';
 
 const cache = new Map();
 const falhas = new Set();
 const fila = [];
 let ativos = 0;
 const MAX_SIMULTANEAS = 6;
+
+// Render 3D usa GPU e parse pesado: poucos por vez para a interface continuar fluida.
+let ativos3d = 0;
+const MAX_3D = 2;
+const fila3d = [];
+
+// PDF/.ai: rasterizacao em software, com fila propria e curta.
+let ativosPdf = 0;
+const MAX_PDF = 3;
+const filaPdf = [];
 
 function chave(item) {
   return `${item.Caminho ?? item.caminho}|${item.Modificado ?? item.modificado}`;
@@ -18,6 +30,8 @@ export function limparCache() {
   cache.clear();
   falhas.clear();
   fila.length = 0;
+  fila3d.length = 0;
+  filaPdf.length = 0;
 }
 
 /**
@@ -53,14 +67,85 @@ function bombear() {
         if (resposta?.pronta && resposta.url) {
           cache.set(pedido.k, resposta.url);
           pedido.aoPronto(resposta.url);
+          return;
+        }
+
+        // Modelo 3D ou PDF/.ai: o host entrega o arquivo e espera o WebP renderizado aqui.
+        if (resposta?.renderizar && resposta.arquivoUrl) {
+          const pedidoRender = {
+            k: pedido.k,
+            url: resposta.arquivoUrl,
+            chave: resposta.chave,
+            tipo: resposta.renderizar,
+            ext: (pedido.item.Nome ?? pedido.item.nome ?? '').split('.').pop(),
+            tamanho: pedido.tamanho,
+            aoPronto: pedido.aoPronto,
+          };
+
+          if (resposta.renderizar === '3d') {
+            fila3d.push(pedidoRender);
+            bombear3d();
+          } else {
+            filaPdf.push(pedidoRender);
+            bombearPdf();
+          }
+          return;
+        }
+
+        falhas.add(pedido.k);
+      })
+      .catch(() => falhas.add(pedido.k))
+      .finally(() => {
+        ativos--;
+        bombear();
+      });
+  }
+}
+
+function bombear3d() {
+  while (ativos3d < MAX_3D && fila3d.length > 0) {
+    const pedido = fila3d.shift();
+    ativos3d++;
+
+    thumb3d
+      .gerar(pedido.url, pedido.ext, pedido.tamanho)
+      .then((dados) => call('thumb.salvar', { chave: pedido.chave, dados }))
+      .then((resposta) => {
+        if (resposta?.ok && resposta.url) {
+          cache.set(pedido.k, resposta.url);
+          pedido.aoPronto(resposta.url);
         } else {
           falhas.add(pedido.k);
         }
       })
       .catch(() => falhas.add(pedido.k))
       .finally(() => {
-        ativos--;
-        bombear();
+        ativos3d--;
+        bombear3d();
+      });
+  }
+}
+
+function bombearPdf() {
+  while (ativosPdf < MAX_PDF && filaPdf.length > 0) {
+    const pedido = filaPdf.shift();
+    ativosPdf++;
+
+    thumbPdf
+      .gerar(pedido.url, pedido.tamanho)
+      .then((dados) => call('thumb.salvar', { chave: pedido.chave, dados }))
+      .then((resposta) => {
+        if (resposta?.ok && resposta.url) {
+          cache.set(pedido.k, resposta.url);
+          pedido.aoPronto(resposta.url);
+        } else {
+          falhas.add(pedido.k);
+        }
+      })
+      .catch(() => falhas.add(pedido.k))
+      .finally(() => {
+        ativosPdf--;
+        bombearPdf();
       });
   }
 }

@@ -720,11 +720,7 @@ function criarTelha(item, coluna, linha, largura, altura, alturaLinha) {
   const thumb = document.createElement('div');
   thumb.className = 'tile-thumb';
 
-  const usarMiniatura = !ehPasta
-    && !['audio', 'documento', 'outro'].includes(cat)
-    // obj/fbx/usd/ma/mb: o shell devolve sempre o mesmo icone generico e minusculo,
-    // entao o icone de tipo do app fica melhor. blend/glb tem previa de verdade.
-    && !(cat === 'modelo3d' && !['blend', 'glb', 'gltf'].includes(ext));
+  const usarMiniatura = !ehPasta && !['audio', 'documento', 'outro'].includes(cat);
   const emCache = usarMiniatura ? thumbs.emCache(item) : null;
 
   if (emCache) {

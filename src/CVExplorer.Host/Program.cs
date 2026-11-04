@@ -35,7 +35,21 @@ internal static class Program
         host.UltimaJanelaFechada += contexto.ExitThread;
 
         // Pasta opcional na linha de comando (usada pelo "abrir com").
-        var inicial = args.FirstOrDefault(a => !a.StartsWith('-') && Directory.Exists(a));
+        // Aceita tanto um caminho unico quanto um que tenha sido quebrado por espacos.
+        var candidatos = new List<string>();
+        var atual = string.Empty;
+        foreach (var argumento in args)
+        {
+            if (argumento.StartsWith('-'))
+            {
+                continue;
+            }
+
+            atual = atual.Length == 0 ? argumento : $"{atual} {argumento}";
+            candidatos.Add(atual);
+        }
+
+        var inicial = candidatos.LastOrDefault(Directory.Exists);
         host.AbrirJanela(inicial, primaria: true);
 
         Application.Run(contexto);

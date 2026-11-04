@@ -16,6 +16,12 @@ public sealed class ThumbnailResult
     public string Chave { get; set; } = string.Empty;
 
     public bool Pronta { get; set; }
+
+    /// <summary>
+    /// Formato que a interface desenha (e devolve com thumb.salvar):
+    /// "3d" para modelos (three.js) e "pdf" para .ai/.pdf compativeis (pdf.js).
+    /// </summary>
+    public string? Renderizar { get; set; }
 }
 
 /// <summary>
@@ -36,9 +42,44 @@ public sealed class ThumbnailService
         ".mp4", ".mov", ".mxf", ".avi", ".mkv", ".wmv", ".webm", ".m4v", ".mpg", ".mpeg", ".mts", ".m2ts",
     };
 
+    /// <summary>Formatos que o proprio app renderiza (three.js no WebView2).</summary>
+    private static readonly HashSet<string> Modelos3D = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".obj", ".fbx", ".glb", ".gltf", ".stl", ".usdz",
+    };
+
+    public static bool EhModelo3D(string caminho) => Modelos3D.Contains(Path.GetExtension(caminho));
+
+    /// <summary>.ai salvo com "PDF compatible" e PDF de verdade: da para desenhar sem Illustrator.</summary>
+    public static bool EhDocumentoPdf(string caminho)
+    {
+        var ext = Path.GetExtension(caminho);
+        if (!ext.Equals(".ai", StringComparison.OrdinalIgnoreCase)
+            && !ext.Equals(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(caminho);
+            Span<byte> cabecalho = stackalloc byte[5];
+            return stream.Read(cabecalho) == 5
+                   && cabecalho[0] == (byte)'%'
+                   && cabecalho[1] == (byte)'P'
+                   && cabecalho[2] == (byte)'D'
+                   && cabecalho[3] == (byte)'F';
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private readonly AppSettings _settings;
     private readonly FfmpegLocator _ffmpeg;
-    private readonly SemaphoreSlim _limite = new(Math.Clamp(Environment.ProcessorCount / 2, 2, 6));
+    // Decodificacao em paralelo: 32 nucleos nao precisam de 32 decoders, mas 4 e pouco.
+    private readonly SemaphoreSlim _limite = new(Math.Clamp(Environment.ProcessorCount / 4, 4, 12));
     private readonly ConcurrentDictionary<string, Task<ThumbnailResult>> _emAndamento = new();
 
     public ThumbnailService(AppSettings settings, FfmpegLocator ffmpeg)
@@ -51,9 +92,15 @@ public sealed class ThumbnailService
     public static string UrlFor(string chave) =>
         $"https://{AppPaths.ThumbsVirtualHost}/{chave}.webp";
 
+    /// <summary>
+    /// Muda quando o pipeline de miniaturas muda (novo decoder, nova ordem, render no app):
+    /// invalida o cache antigo sozinho, sem o usuario precisar limpar nada.
+    /// </summary>
+    private const int VersaoCache = 2;
+
     public static string Chave(string caminho, long tamanho, DateTime modificado, int size)
     {
-        var raw = $"{caminho.ToLowerInvariant()}|{tamanho}|{modificado.Ticks}|{size}";
+        var raw = $"v{VersaoCache}|{caminho.ToLowerInvariant()}|{tamanho}|{modificado.Ticks}|{size}";
         var hash = SHA1.HashData(Encoding.UTF8.GetBytes(raw));
         return Convert.ToHexString(hash)[..20].ToLowerInvariant();
     }
@@ -72,6 +119,21 @@ public sealed class ThumbnailService
         if (File.Exists(destino))
         {
             return new ThumbnailResult { Chave = chave, Pronta = true };
+        }
+
+        // Modelo 3D: quem desenha e a interface (three.js). O host so entrega o arquivo
+        // e guarda o WebP que voltar em thumb.salvar.
+        if (EhModelo3D(caminho))
+        {
+            // Arquivo gigante (3D scan de varios GB) travaria o parse: fica o icone de tipo.
+            var cabe = tamanho <= 350L * 1024 * 1024;
+            return new ThumbnailResult { Chave = chave, Pronta = false, Renderizar = cabe ? "3d" : null };
+        }
+
+        // .ai/.pdf: pdf.js desenha a primeira pagina no WebView2, sem Illustrator instalado.
+        if (EhDocumentoPdf(caminho))
+        {
+            return new ThumbnailResult { Chave = chave, Pronta = false, Renderizar = "pdf" };
         }
 
         var task = _emAndamento.GetOrAdd(chave, _ => GenerateAsync(caminho, destino, size, chave, ct));
@@ -126,14 +188,8 @@ public sealed class ThumbnailService
     {
         var ext = Path.GetExtension(caminho);
 
-        // 1) Shell: melhor resultado para formatos com handler instalado (PSD/AI/PDF).
-        var shell = await ShellThumbnail.GetPngAsync(caminho, size, ct).ConfigureAwait(false);
-        if (shell is not null)
-        {
-            return shell;
-        }
-
-        // 2) .blend: preview embutido, sem depender do Blender.
+        // 1) .blend: o preview embutido no arquivo e instantaneo e nao depende de
+        // handler do Windows nem de abrir o Blender. Vem antes do Shell de proposito.
         if (ext.Equals(".blend", StringComparison.OrdinalIgnoreCase))
         {
             var preview = await Task.Run(() => ReadBlend(caminho), ct).ConfigureAwait(false);
@@ -141,6 +197,13 @@ public sealed class ThumbnailService
             {
                 return preview;
             }
+        }
+
+        // 2) Shell: melhor resultado para formatos com handler instalado (PSD/AI/PDF).
+        var shell = await ShellThumbnail.GetPngAsync(caminho, size, ct).ConfigureAwait(false);
+        if (shell is not null)
+        {
+            return shell;
         }
 
         // 3) Decoders proprios.
