@@ -64,7 +64,8 @@ public static class VideoPlanBuilder
         string Descricao,
         string Container = ".mov",
         string Audio = "pcm24",
-        bool Fixo = false);
+        bool Fixo = false,
+        bool Alpha = false);
 
     /// <summary>
     /// Escada usada pela escolha automatica e pelo ajuste de espaco. Só perfis de
@@ -78,7 +79,7 @@ public static class VideoPlanBuilder
         ("prores422lt", new PerfilInfo("ProRes 422 LT", "prores_ks", "yuv422p10le", 1, 102, "transparente para origens de ate ~50 Mbps")),
         ("prores422", new PerfilInfo("ProRes 422", "prores_ks", "yuv422p10le", 2, 147, "transparente para origens de ate ~75 Mbps")),
         ("prores422hq", new PerfilInfo("ProRes 422 HQ", "prores_ks", "yuv422p10le", 3, 220, "para origens de alto bitrate ou 10 bits")),
-        ("prores4444", new PerfilInfo("ProRes 4444", "prores_ks", "yuva444p10le", 4, 330, "4:4:4 e alpha")),
+        ("prores4444", new PerfilInfo("ProRes 4444", "prores_ks", "yuva444p10le", 4, 330, "4:4:4 e alpha", Alpha: true)),
         ("dnxhr_hqx", new PerfilInfo("DNxHR HQX", "dnxhd", "yuv422p10le", 0, 220, "12 bits, fluxo Avid")),
         ("dnxhr_sq", new PerfilInfo("DNxHR SQ", "dnxhd", "yuv422p", 0, 145, "8 bits, decodificacao muito rapida")),
     };
@@ -87,13 +88,15 @@ public static class VideoPlanBuilder
     private static readonly (string Chave, PerfilInfo Info)[] Extras =
     {
         ("prores422_mov", new PerfilInfo("ProRes 422 — .mov", "prores_ks", "yuv422p10le", 2, 147, "entrega em QuickTime")),
-        ("prores4444_mov", new PerfilInfo("ProRes 4444 (alpha) — .mov", "prores_ks", "yuva444p10le", 4, 330, "canal alpha preservado")),
+        ("prores4444_mov", new PerfilInfo("ProRes 4444 (alpha) — .mov", "prores_ks", "yuva444p10le", 4, 330, "canal alpha preservado", Alpha: true)),
         ("dnxhr_sq_mov", new PerfilInfo("DNxHR SQ — .mov", "dnxhd", "yuv422p", 0, 138, "Avid/fluxo Windows")),
         ("dnxhr_hq_mov", new PerfilInfo("DNxHR HQ — .mov", "dnxhd", "yuv422p", 0, 208, "8 bits de alta qualidade")),
         ("dnxhr_sq_mxf", new PerfilInfo("DNxHR SQ — .mxf", "dnxhd", "yuv422p", 0, 138, "MXF OP1a para Avid", ".mxf")),
         ("dnxhr_hq_mxf", new PerfilInfo("DNxHR HQ — .mxf", "dnxhd", "yuv422p", 0, 208, "MXF OP1a para Avid", ".mxf")),
         ("xdcam", new PerfilInfo("XDCAM HD422 50 Mbps — .mxf", "mpeg2video", "yuv422p", 0, 50, "padrão de emissora", ".mxf", "pcm24", Fixo: true)),
         ("dxv3", new PerfilInfo("DXV3 — .mov", "dxv", "rgba", 0, 185, "Resolume, playback em tempo real", ".mov", "pcm16")),
+        ("dxv3_alpha", new PerfilInfo("DXV3 (alpha) — .mov", "dxv", "rgba", 0, 370, "playback com transparência (DXT5)", ".mov", "pcm16", Alpha: true)),
+        ("hap_alpha", new PerfilInfo("HAP Alpha — .mov", "hap", "rgba", 0, 370, "playback com transparência (DXT5)", ".mov", "pcm16", Alpha: true)),
         ("h264", new PerfilInfo("H.264 — .mp4", "h264", "yuv420p", 0, 20, "entrega/aprovação", ".mp4", "aac")),
     };
 
@@ -136,7 +139,7 @@ public static class VideoPlanBuilder
         // Ja um preset manual (menu "Converter para", ex. H.264) e escolha explicita de entrega
         // e deve ser respeitado — nesse caso o alpha e descartado com aviso.
         var ehPresetManual = Extras.Any(p => p.Chave.Equals(chave, StringComparison.OrdinalIgnoreCase));
-        plano.ComAlpha = perfil.PixFmt.StartsWith("yuva", StringComparison.Ordinal);
+        plano.ComAlpha = perfil.Alpha;
 
         if (info.TemAlpha && !ehPresetManual)
         {
@@ -157,7 +160,7 @@ public static class VideoPlanBuilder
         {
             plano.Avisos.Add(
                 $"{perfil.Nome} não guarda canal alpha: a transparência da origem será descartada. "
-                + "Use ProRes 4444 se precisar manter.");
+                + "Use HAP Alpha (playback) ou ProRes 4444 (edição) se precisar manter.");
         }
         else if (!info.TemAlpha && !ehPresetManual && plano.ComAlpha)
         {
@@ -244,7 +247,7 @@ public static class VideoPlanBuilder
         foreach (var (chave, perfil) in Ordem)
         {
             // Nunca desce para um perfil sem alpha quando a origem tem transparencia.
-            if (plano.ComAlpha && !perfil.PixFmt.StartsWith("yuva", StringComparison.Ordinal))
+            if (plano.ComAlpha && !PixFmtComAlpha(perfil.PixFmt))
             {
                 continue;
             }
@@ -289,10 +292,15 @@ public static class VideoPlanBuilder
         if (intraFrame && info.BitrateVideoMbps > 0 && plano.AlvoMbps > info.BitrateVideoMbps * 1.5)
         {
             var fator = plano.AlvoMbps / info.BitrateVideoMbps;
-            plano.Avisos.Add(
-                $"{info.Codec.ToUpperInvariant()} da origem e long-GOP ({info.BitrateVideoMbps:0} Mbps); "
-                + $"{plano.NomeExibicao} e intra-frame e fica ~{fator:0.#}x maior. "
-                + "E o preco de cada quadro ser decodificado sozinho (scrub instantaneo no AE).");
+
+            // Só culpe o long-GOP se a origem realmente for long-GOP.
+            plano.Avisos.Add(EhLongGop(info.Codec)
+                ? $"{info.Codec.ToUpperInvariant()} da origem é long-GOP ({info.BitrateVideoMbps:0} Mbps); "
+                  + $"{plano.NomeExibicao} é intra-frame e fica ~{fator:0.#}x maior. "
+                  + "É o preço de cada quadro ser decodificado sozinho (scrub instantâneo no AE)."
+                : $"{plano.NomeExibicao} usa ~{plano.AlvoMbps:0} Mbps contra {info.BitrateVideoMbps:0} Mbps "
+                  + $"da origem: fica ~{fator:0.#}x maior, mas cada quadro é independente "
+                  + "(scrub instantâneo no AE).");
         }
 
         if (info.Hdr)
@@ -343,6 +351,20 @@ public static class VideoPlanBuilder
 
         return (long)(info.DuracaoSegundos * (videoMbps + audioMbps) * 1_000_000 / 8);
     }
+
+    /// <summary>Codecs que guardam diferenças entre quadros (o oposto de intra-frame).</summary>
+    private static bool EhLongGop(string codec) =>
+        codec is "h264" or "hevc" or "mpeg1video" or "mpeg2video" or "mpeg4" or "vp8" or "vp9"
+            or "av1" or "theora" or "wmv2" or "wmv3" or "vc1" or "msmpeg4v3";
+
+    /// <summary>O pix_fmt escolhido carrega um canal de transparência de verdade.</summary>
+    private static bool PixFmtComAlpha(string pixFmt) =>
+        pixFmt.StartsWith("yuva", StringComparison.Ordinal)
+        || pixFmt.StartsWith("rgba", StringComparison.Ordinal)
+        || pixFmt.StartsWith("bgra", StringComparison.Ordinal)
+        || pixFmt.StartsWith("argb", StringComparison.Ordinal)
+        || pixFmt.StartsWith("abgr", StringComparison.Ordinal)
+        || pixFmt.StartsWith("gbrap", StringComparison.Ordinal);
 
     private static double Alvo(PerfilInfo perfil, MediaInfo info) =>
         perfil.Fixo ? perfil.Mbps1080p30 : perfil.Mbps1080p30 * FatorResolucao(info) * FatorFps(info);

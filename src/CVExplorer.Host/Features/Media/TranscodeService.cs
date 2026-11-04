@@ -136,7 +136,19 @@ public sealed class TranscodeService
         // H.264 depende de qual encoder este ffmpeg tem (libx264, NVENC, MF...).
         if (plan.Encoder == "h264")
         {
-            plan.Encoder = H264Picker.Escolher(ffmpeg) ?? "h264";
+            plan.Encoder = CodecCapabilities.H264(ffmpeg) ?? "h264";
+        }
+
+        // DXV com alpha precisa de DXT5, que o encoder do FFmpeg não implementa.
+        if (plan.Encoder == "dxv" && plan.ComAlpha && !CodecCapabilities.DxvAlpha(ffmpeg))
+        {
+            return new TranscodeResult
+            {
+                Ok = false,
+                Erro = "O ffmpeg só codifica DXV em DXT1, que não guarda alpha. "
+                       + "Use HAP Alpha (playback com transparência no Resolume) "
+                       + "ou ProRes 4444 (edição com alpha).",
+            };
         }
 
         var psi = new ProcessStartInfo(ffmpeg)

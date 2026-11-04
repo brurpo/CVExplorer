@@ -363,6 +363,8 @@ public sealed class FfmpegCommandTests
     [InlineData("dnxhr_hq_mxf", ".mxf", "dnxhd", "pcm_s24le")]
     [InlineData("xdcam", ".mxf", "mpeg2video", "pcm_s24le")]
     [InlineData("dxv3", ".mov", "dxv", "pcm_s16le")]
+    [InlineData("dxv3_alpha", ".mov", "dxv", "pcm_s16le")]
+    [InlineData("hap_alpha", ".mov", "hap", "pcm_s16le")]
     [InlineData("h264", ".mp4", "h264", "aac")]
     public void PresetsManuaisDefinemCodecContainerEAudio(string chave, string container, string encoder, string audio)
     {
@@ -453,19 +455,63 @@ public sealed class FfmpegCommandTests
     }
 
     [Fact]
-    public void MenuDePresetsTemOsNoveFormatosPedidos()
+    public void MenuDePresetsCobreTodosOsFormatos()
     {
         var presets = VideoPlanBuilder.Presets();
-        Assert.Equal(9, presets.Count);
+        Assert.Equal(11, presets.Count);
 
         foreach (var esperado in new[]
                  {
                      "prores422_mov", "prores4444_mov", "dnxhr_sq_mov", "dnxhr_hq_mov",
-                     "dnxhr_sq_mxf", "dnxhr_hq_mxf", "xdcam", "dxv3", "h264",
+                     "dnxhr_sq_mxf", "dnxhr_hq_mxf", "xdcam", "dxv3", "dxv3_alpha", "hap_alpha", "h264",
                  })
         {
             Assert.Contains(presets, p => p.Chave == esperado);
         }
+    }
+
+    [Fact]
+    public void OrigemIntraFrameNaoEhChamadaDeLongGop()
+    {
+        // ProRes -> DXV3: a origem já é intra-frame, o aviso não pode culpar o long-GOP.
+        var info = new MediaInfo
+        {
+            Caminho = @"C:\a.mov",
+            Largura = 1920,
+            Altura = 1080,
+            Fps = 30,
+            PixFmt = "yuva444p10le",
+            Codec = "prores",
+            TemAlpha = true,
+        };
+        info.BitrateVideoMbps = 9;
+
+        var plano = VideoPlanBuilder.Choose(info, "dxv3", espacoLivre: 0);
+
+        Assert.Contains(plano.Avisos, a => a.Contains("independente"));
+        Assert.DoesNotContain(plano.Avisos, a => a.Contains("long-GOP"));
+    }
+
+    [Fact]
+    public void DxvComAlphaPedeDxt5EHapComAlphaPedeHapAlpha()
+    {
+        var info = new MediaInfo { Caminho = @"C:\a.mov", Largura = 1920, Altura = 1080, Fps = 30, PixFmt = "yuva444p10le", TemAlpha = true };
+
+        var dxv = VideoPlanBuilder.Choose(info, "dxv3_alpha", 0);
+        Assert.True(dxv.ComAlpha);
+        var argsDxv = FfmpegCommandBuilder.Build(info, dxv, "e.mov", "s.mov");
+        AssertContains(argsDxv, "-format", "dxt5");
+        AssertContains(argsDxv, "-pix_fmt", "rgba");
+
+        var semAlpha = VideoPlanBuilder.Choose(info, "dxv3", 0);
+        Assert.False(semAlpha.ComAlpha);
+        AssertContains(FfmpegCommandBuilder.Build(info, semAlpha, "e.mov", "s.mov"), "-format", "dxt1");
+
+        var hap = VideoPlanBuilder.Choose(info, "hap_alpha", 0);
+        Assert.True(hap.ComAlpha);
+        var argsHap = FfmpegCommandBuilder.Build(info, hap, "e.mov", "s.mov");
+        AssertContains(argsHap, "-format", "hap_alpha");
+        AssertContains(argsHap, "-pix_fmt", "rgba");
     }
 }
 

@@ -42,6 +42,8 @@ public static class Commands
                 encontrado = host.Ffmpeg.Ffmpeg is not null,
                 caminho = host.Ffmpeg.Ffmpeg,
                 ffprobe = host.Ffmpeg.Ffprobe,
+                // O menu só oferece DXV com alpha quando o encoder suporta DXT5.
+                dxvAlpha = host.Ffmpeg.Ffmpeg is not null && CodecCapabilities.DxvAlpha(host.Ffmpeg.Ffmpeg),
             },
             repositorioConfigurado = AppInfo.RepositorioConfigurado,
             raizes = host.Settings.Raizes,

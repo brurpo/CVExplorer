@@ -248,18 +248,37 @@ define codec, container e áudio:
 | MOV | ProRes 4444 (alpha) | `prores_ks -profile:v 4 -alpha_bits 16` | `.mov` | PCM 24 bits |
 | MOV | DNxHR SQ | `dnxhd -profile:v dnxhr_sq` | `.mov` | PCM 24 bits |
 | MOV | DNxHR HQ | `dnxhd -profile:v dnxhr_hq` | `.mov` | PCM 24 bits |
-| MOV | DXV3 | `dxv -pix_fmt rgba` | `.mov` | PCM 16 bits |
+| MOV | DXV3 | `dxv -format dxt1` | `.mov` | PCM 16 bits |
+| MOV | DXV3 (alpha) | `dxv -format dxt5` | `.mov` | PCM 16 bits |
+| MOV | HAP Alpha | `hap -format hap_alpha` | `.mov` | PCM 16 bits |
 | MXF | DNxHR SQ / HQ | `dnxhd` | `.mxf` (OP1a) | PCM 24 bits |
 | MXF | XDCAM HD422 50 Mbps | `mpeg2video` CBR 50 Mbps, 4:2:2 | `.mxf` (OP1a) | PCM 24 bits |
 | MP4 | H.264 | encoder H.264 disponível, ~20 Mbps | `.mp4` | AAC 320 kbps |
 
 Detalhes que valem registro: `.mxf` recebe `-f mxf` e **não** recebe `-movflags`; XDCAM usa
 `-b:v/-minrate/-maxrate 50M` com `-bufsize 17825792 -g 12 -bf 2` (é o que emissora espera, e o
-bitrate é fixo — não acompanha resolução); DXV3 aceita só `dxt1` neste ffmpeg, ou seja, **sem alpha**;
-H.264 resolve o encoder em tempo de execução (`libx264` → `h264_nvenc` → `h264_qsv` → `h264_amf` →
-`h264_mf` → `libopenh264`). Preset escolhido à mão nunca é trocado por falta de espaço — a escolha é
-do usuário; só o automático se ajusta. Se a origem tem alpha e o preset não guarda (H.264, DNxHR,
-XDCAM, DXV3), o diálogo avisa que a transparência será descartada.
+bitrate é fixo — não acompanha resolução); H.264 resolve o encoder em tempo de execução
+(`libx264` → `h264_nvenc` → `h264_qsv` → `h264_amf` → `h264_mf` → `libopenh264`). Preset escolhido à
+mão nunca é trocado por falta de espaço — a escolha é do usuário; só o automático se ajusta. Se a
+origem tem alpha e o preset não guarda (H.264, DNxHR, XDCAM, DXV3), o diálogo avisa que a
+transparência será descartada e indica HAP Alpha ou ProRes 4444.
+
+### Alpha em codec de playback (DXV3 e HAP)
+
+DXV3 guarda alpha em texturas **DXT5**; DXT1 não. O encoder `dxv` do FFmpeg, porém, só implementa
+DXT1 — está assim no código-fonte do próprio FFmpeg (`dxvenc.c` tem `DXV_FMT_DXT1` como única opção,
+sem DXT5/YG10), não é limitação do build LGPL empacotado. Conferido também no binário:
+`ffmpeg -h encoder=dxv` lista apenas `dxt1`, e `-format dxt5` é recusado com *"Undefined constant"*.
+
+Por isso o **app verifica a capacidade antes de oferecer**: `app.info` expõe `ffmpeg.dxvAlpha`
+(consulta `-h encoder=dxv` uma vez, com cache). Sem suporte, a entrada **DXV3 (alpha)** aparece
+desabilitada no submenu e no seletor com o motivo escrito — em vez de falhar no meio da conversão.
+Se um dia o FFmpeg implementar DXT5, o preset passa a funcionar sem mudar código.
+
+O caminho que **entrega alpha hoje** é o **HAP Alpha** (`-c:v hap -format hap_alpha`, texturas DXT5):
+é playback em tempo real e o Resolume toca HAP nativamente. Verificado ponta a ponta com uma fonte
+ProRes 4444 com gradiente de alpha: a saída sai `hap`/tag `Hap5`, `pix_fmt rgba`, e o canal alpha
+decodificado mantém exatamente os mesmos níveis da origem (YMIN 40, YMAX 255).
 
 ### Sequência de imagens
 

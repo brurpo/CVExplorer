@@ -2,6 +2,7 @@ import { call } from './bridge.js';
 import { t } from './i18n.js';
 import * as fmt from './format.js';
 import * as ui from './ui.js';
+import { state } from './state.js';
 
 const PERFIS_EDICAO = ['prores422lt', 'prores422', 'prores422hq', 'prores4444', 'dnxhr_lb', 'dnxhr_sq', 'dnxhr_hqx', 'proxy'];
 
@@ -20,6 +21,8 @@ export const PRESETS_CONVERSAO = [
       { chave: 'dnxhr_sq_mov', rotulo: 'DNxHR SQ' },
       { chave: 'dnxhr_hq_mov', rotulo: 'DNxHR HQ' },
       { chave: 'dxv3', rotulo: 'DXV3' },
+      { chave: 'dxv3_alpha', rotulo: 'DXV3 (alpha)', exige: 'dxvAlpha' },
+      { chave: 'hap_alpha', rotulo: 'HAP Alpha' },
     ],
   },
   {
@@ -37,6 +40,18 @@ export const PRESETS_CONVERSAO = [
 ];
 
 const FPS_COMUNS = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60];
+
+/** Presets que dependem de uma capacidade do ffmpeg do usuário. */
+const EXIGENCIAS = new Map(
+  PRESETS_CONVERSAO.flatMap((g) => g.itens)
+    .filter((item) => item.exige)
+    .map((item) => [item.chave, item.exige]),
+);
+
+export function presetIndisponivel(chave) {
+  const exigencia = EXIGENCIAS.get(chave);
+  return Boolean(exigencia) && !state.info?.ffmpeg?.[exigencia];
+}
 
 function seletorPerfil(estimativas, valorInicial) {
   const nomes = new Map((estimativas ?? []).map((e) => [e.Perfil, e]));
@@ -67,9 +82,13 @@ function seletorPerfil(estimativas, valorInicial) {
   const entrega = grupo(t('video.grupoEntrega'));
   for (const [chave, dados] of nomes) {
     if (PERFIS_EDICAO.includes(chave)) continue;
+
+    const indisponivel = presetIndisponivel(chave);
     const opcao = document.createElement('option');
     opcao.value = chave;
-    opcao.textContent = dados.Texto ? `${dados.Nome} — ${dados.Texto}` : dados.Nome;
+    opcao.disabled = indisponivel;
+    opcao.textContent = (dados.Texto ? `${dados.Nome} — ${dados.Texto}` : dados.Nome)
+      + (indisponivel ? ` — ${t('menu.indisponivel')}` : '');
     entrega.appendChild(opcao);
   }
 

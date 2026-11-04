@@ -991,10 +991,15 @@ function prefetchSequencia(lista) {
 function itensConverterPara(primeiro) {
   return dialogs.PRESETS_CONVERSAO.flatMap((grupo) => [
     { cabecalho: grupo.grupo },
-    ...grupo.itens.map((preset) => ({
-      rotulo: preset.rotulo,
-      acao: () => dialogs.converterVideo(primeiro, state.config, preset.chave),
-    })),
+    ...grupo.itens.map((preset) => {
+      const indisponivel = dialogs.presetIndisponivel(preset.chave);
+      return {
+        rotulo: indisponivel ? `${preset.rotulo} — ${t('menu.indisponivelCurto')}` : preset.rotulo,
+        dica: indisponivel ? t('menu.indisponivelMotivo') : '',
+        desabilitado: indisponivel,
+        acao: () => dialogs.converterVideo(primeiro, state.config, preset.chave),
+      };
+    }),
   ]);
 }
 

@@ -202,6 +202,7 @@ export function menuContexto(x, y, itens) {
       const botao = document.createElement('button');
       botao.className = `menu-item${item.perigo ? ' perigo' : ''}`;
       botao.disabled = Boolean(item.desabilitado);
+      if (item.dica) botao.title = item.dica;
 
       const texto = document.createElement('span');
       texto.textContent = item.rotulo;

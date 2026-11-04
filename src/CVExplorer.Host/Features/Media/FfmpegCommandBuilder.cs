@@ -107,6 +107,19 @@ public static class FfmpegCommandBuilder
                 break;
 
             case "dxv":
+                // DXV só implementa DXT1 no FFmpeg (sem alpha). O DXT5 é oferecido e
+                // recusado no host quando o build não tem, em vez de falhar no meio.
+                args.Add("-format");
+                args.Add(plan.ComAlpha ? "dxt5" : "dxt1");
+                args.Add("-pix_fmt");
+                args.Add(plan.PixFmt);
+                break;
+
+            case "hap":
+                // HAP Alpha usa texturas DXT5: é o caminho que entrega transparência
+                // de verdade em playback (Resolume toca HAP nativamente).
+                args.Add("-format");
+                args.Add(plan.ComAlpha ? "hap_alpha" : "hap");
                 args.Add("-pix_fmt");
                 args.Add(plan.PixFmt);
                 break;
