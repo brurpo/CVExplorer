@@ -31,9 +31,10 @@ public static class CodecCapabilities
     });
 
     /// <summary>
-    /// O encoder dxv do FFmpeg só implementa DXT1 (sem alpha) — conferido no código-fonte
-    /// do próprio FFmpeg, não é limitação do build. Se um dia aparecer DXT5, isto passa a true
-    /// e o preset "DXV3 (alpha)" funciona sem mudar mais nada.
+    /// O encoder dxv do FFmpeg oficial só implementa DXT1 (sem alpha) — não é limitação
+    /// do build. O patch em vendor\ffmpeg adiciona DXT5, e scripts\build-ffmpeg-dxv.ps1
+    /// compila esse binário; aqui só perguntamos, então os dois casos funcionam sem
+    /// mudar código.
     /// </summary>
     public static bool DxvAlpha(string ffmpeg) => CacheDxvAlpha.GetOrAdd(ffmpeg, ffmpegCaminho =>
     {

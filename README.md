@@ -265,20 +265,44 @@ transparência será descartada e indica HAP Alpha ou ProRes 4444.
 
 ### Alpha em codec de playback (DXV3 e HAP)
 
-DXV3 guarda alpha em texturas **DXT5**; DXT1 não. O encoder `dxv` do FFmpeg, porém, só implementa
-DXT1 — está assim no código-fonte do próprio FFmpeg (`dxvenc.c` tem `DXV_FMT_DXT1` como única opção,
-sem DXT5/YG10), não é limitação do build LGPL empacotado. Conferido também no binário:
-`ffmpeg -h encoder=dxv` lista apenas `dxt1`, e `-format dxt5` é recusado com *"Undefined constant"*.
+DXV3 guarda alpha em texturas **DXT5**; DXT1 não. O encoder `dxv` do FFmpeg oficial só
+implementa DXT1 — está assim no código-fonte (`dxvenc.c` tem `DXV_FMT_DXT1` como única opção) —,
+mas o **decoder já entende DXT5** (na verdade DXT4: o alpha é armazenado pré-multiplicado).
 
-Por isso o **app verifica a capacidade antes de oferecer**: `app.info` expõe `ffmpeg.dxvAlpha`
-(consulta `-h encoder=dxv` uma vez, com cache). Sem suporte, a entrada **DXV3 (alpha)** aparece
-desabilitada no submenu e no seletor com o motivo escrito — em vez de falhar no meio da conversão.
-Se um dia o FFmpeg implementar DXT5, o preset passa a funcionar sem mudar código.
+Por isso o projeto traz um patch de ~80 linhas em
+[`vendor/ffmpeg/0001-dxvenc-dxt5-alpha.patch`](./vendor/ffmpeg/0001-dxvenc-dxt5-alpha.patch) e um
+script que compila o ffmpeg com ele:
 
-O caminho que **entrega alpha hoje** é o **HAP Alpha** (`-c:v hap -format hap_alpha`, texturas DXT5):
-é playback em tempo real e o Resolume toca HAP nativamente. Verificado ponta a ponta com uma fonte
-ProRes 4444 com gradiente de alpha: a saída sai `hap`/tag `Hap5`, `pix_fmt rgba`, e o canal alpha
-decodificado mantém exatamente os mesmos níveis da origem (YMIN 40, YMAX 255).
+```powershell
+.\scripts\build-ffmpeg-dxv.ps1          # instala o toolchain em .tools\msys64 e compila
+```
+
+Ele instala MSYS2 **portátil** dentro de `.tools\msys64` (nada no sistema), baixa o FFmpeg,
+aplica o patch, e deixa `ffmpeg.exe`/`ffprobe.exe` em `.tools\ffmpeg-dxv\bin`. Aponte
+**Configurações → caminho do ffmpeg** para essa pasta. O resto do app não muda: o preset
+"DXV3 (alpha)" se habilita sozinho, porque a capacidade é consultada em tempo de execução
+(`ffmpeg -h encoder=dxv`, com cache, exposta em `app.info.ffmpeg.dxvAlpha`).
+
+O que o patch faz: registra a opção `dxt5`, usa o compressor de blocos `dxt5_block` que o FFmpeg
+já tem (é o mesmo do encoder DDS) com `tex_ratio = 16`, escreve um compressor de textura que
+espelha o esquema do DXT1 em unidades de 4 dwords (alpha usa repetição/literal, cor usa
+back-reference), e **pré-multiplica** o quadro antes de comprimir — exatamente o que o decoder
+desfaz ao ler. Sem o patch o preset aparece desabilitado, com o motivo no tooltip.
+
+Verificação feita com fonte ProRes 4444 com alpha (opaco à esquerda, 60/40% à direita):
+saída `dxv`/tag `DXD3`, `pix_fmt rgba`, alpha **exato** em toda a amostragem (erro médio 0,00 e
+máximo 0/255), RGB médio 2,7/255 de diferença (quantização DXT). Dimensão ímpar (1918×1078, fora
+do múltiplo de 16 que o formato exige) também passa: alpha com erro máximo de 1/255.
+
+Se algum dia o FFmpeg implementar DXT5 upstream, o build oficial passa a servir e o patch pode ser
+jogado fora — a detecção em tempo de execução faz o preset funcionar nos dois casos. Vale mandar o
+patch upstream: o decoder já suporta, então é uma lacuna clara.
+
+### HAP Alpha (alternativa que não exige build)
+
+`-c:v hap -format hap_alpha` (texturas DXT5) é playback em tempo real e o Resolume toca HAP
+nativamente. Verificado ponta a ponta com a mesma fonte: saída `hap`/tag `Hap5`, `pix_fmt rgba`,
+canal alpha com os mesmos níveis da origem.
 
 ### Sequência de imagens
 
@@ -367,6 +391,11 @@ O app **não** embute o ffmpeg. Ele procura, nesta ordem:
 Use um build **LGPL** (ex.: [BtbN `lgpl`](https://github.com/BtbN/FFmpeg-Builds)). Os encoders
 `prores_ks`, `dnxhd` e `cfhd` são nativos do FFmpeg, então **não é preciso build GPL**. O ffmpeg
 roda como processo separado — seu binário não é incorporado ao app.
+
+Única exceção: **DXV com alpha** não existe em nenhum build oficial (o encoder `dxv` do FFmpeg só
+implementa DXT1). Para isso existe `scripts\build-ffmpeg-dxv.ps1`, que compila um ffmpeg com o
+patch de [`vendor/ffmpeg`](./vendor/ffmpeg) — ver [Alpha em codec de playback](#alpha-em-codec-de-playback-dxv3-e-hap).
+Sem ele o app continua funcionando e o preset apenas fica indisponível.
 
 ---
 

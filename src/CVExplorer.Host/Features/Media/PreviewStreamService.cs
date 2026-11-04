@@ -228,7 +228,11 @@ public sealed class PreviewStreamService
         "h264_nvenc" => new[] { "-c:v", "h264_nvenc", "-preset", "p4", "-tune", "ll", "-b:v", "4M" },
         "h264_qsv" => new[] { "-c:v", "h264_qsv", "-preset", "veryfast", "-b:v", "4M" },
         "h264_amf" => new[] { "-c:v", "h264_amf", "-quality", "speed", "-b:v", "4M" },
-        "h264_mf" => new[] { "-c:v", "h264_mf", "-preset", "speed", "-b:v", "4M" },
+        "h264_mf" => new[]
+        {
+            // h264_mf nao tem -preset; o que existe e scenario/rate_control.
+            "-c:v", "h264_mf", "-scenario", "live_streaming", "-rate_control", "cbr", "-b:v", "4M",
+        },
         "libopenh264" => new[] { "-c:v", "libopenh264", "-b:v", "4M" },
         "h264_vulkan" => new[] { "-c:v", "h264_vulkan", "-b:v", "4M" },
         _ => new[] { "-c:v", encoder, "-b:v", "4M" },

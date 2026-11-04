@@ -1,0 +1,159 @@
+﻿avcodec/dxvenc: add DXT5 (premultiplied alpha) support
+
+The DXV decoder already handles DXT5 textures (as DXT4, since alpha is stored
+premultiplied), but the encoder only ever emitted DXT1, so DXV with an alpha
+channel could not be produced by FFmpeg at all.
+
+Also premultiply the frame for DXT5, mirroring what the decoder undoes.
+
+---
+diff --git a/libavcodec/dxvenc.c b/libavcodec/dxvenc.c
+index 0a2dd80..af81c16 100644
+--- a/libavcodec/dxvenc.c
++++ b/libavcodec/dxvenc.c
+@@ -158,6 +158,91 @@ static int dxv_compress_dxt1(AVCodecContext *avctx)
+     return 0;
+ }
+ 
++/* Packs a 2-bit opcode into the current opcode word, mirroring PUSH_OP but
++ * without the back-reference bookkeeping: the DXT5 compressor below decides the
++ * opcode itself.  */
++#define PUSH_DXV_OP(opcode)                                                   \
++    do {                                                                      \
++        if (state == 16) {                                                    \
++            if (bytestream2_get_bytes_left_p(pbc) < 4) {                      \
++                return AVERROR_INVALIDDATA;                                   \
++            }                                                                 \
++            value = pbc->buffer;                                              \
++            bytestream2_put_le32(pbc, 0);                                     \
++            state = 0;                                                        \
++        }                                                                     \
++        AV_WL32(value, AV_RL32(value) | ((uint32_t)(opcode) << (state * 2))); \
++        state++;                                                              \
++    } while (0)
++
++/*
++ * DXT5 texture, 16 bytes per block: the unit is 4 dwords instead of 2.
++ * The first half of a block is the alpha texture and has its own small opcode
++ * set (0 = long copy, 1 = repeat run, 2 = back-reference, 3 = two literals);
++ * the second half is the colour texture and reuses the DXT1 scheme, with every
++ * distance expressed in units of 4 dwords.
++ *
++ * Literal-heavy on purpose: the point is alpha support, not squeezing the last
++ * byte, and only back-references that are safe to express are emitted.
++ */
++static int dxv_compress_dxt5(AVCodecContext *avctx)
++{
++    DXVEncContext *ctx = avctx->priv_data;
++    PutByteContext *pbc = &ctx->pbc;
++    void *value;
++    uint32_t prev_pos, idx, alfa0, alfa1, cor0, cor1, state = 16, pos;
++
++    ff_hashtable_clear(ctx->combo_ht);
++
++    /* The decoder copies the first block verbatim. */
++    for (int i = 0; i < 4; i++)
++        bytestream2_put_le32(pbc, AV_RL32(ctx->tex_data + 4 * i));
++    pos = 4;
++
++    while (pos + 4 <= ctx->tex_size / 4) {
++        alfa0 = AV_RL32(ctx->tex_data + 4 * pos);
++        alfa1 = AV_RL32(ctx->tex_data + 4 * (pos + 1));
++
++        if (pos >= 8 && alfa0 == AV_RL32(ctx->tex_data + 4 * (pos - 4)) &&
++                        alfa1 == AV_RL32(ctx->tex_data + 4 * (pos - 3))) {
++            /* Same alpha texture as the previous block: repeat it. */
++            PUSH_DXV_OP(1);
++            bytestream2_put_byte(pbc, 0);
++        } else {
++            PUSH_DXV_OP(3);
++            bytestream2_put_le32(pbc, alfa0);
++            bytestream2_put_le32(pbc, alfa1);
++        }
++        pos += 2;
++
++        cor0 = AV_RL32(ctx->tex_data + 4 * pos);
++        cor1 = AV_RL32(ctx->tex_data + 4 * (pos + 1));
++
++        idx = ff_hashtable_get(ctx->combo_ht, ctx->tex_data + 4 * pos, &prev_pos) ? pos - prev_pos : 0;
++        if (idx == 4) {
++            PUSH_DXV_OP(1);
++        } else if (idx >= 8 && idx / 4 - 2 <= 0xFF) {
++            PUSH_DXV_OP(2);
++            bytestream2_put_byte(pbc, (uint8_t)(idx / 4 - 2));
++        } else if (idx >= 0x102 * 4) {
++            PUSH_DXV_OP(3);
++            bytestream2_put_le16(pbc, (uint16_t)(idx / 4 - 0x102));
++        } else {
++            /* No usable back-reference: the decoder then reads one opcode per dword. */
++            PUSH_DXV_OP(0);
++            PUSH_DXV_OP(0);
++            bytestream2_put_le32(pbc, cor0);
++            PUSH_DXV_OP(0);
++            bytestream2_put_le32(pbc, cor1);
++        }
++
++        ff_hashtable_set(ctx->combo_ht, ctx->tex_data + 4 * pos, &pos);
++        pos += 2;
++    }
++
++    return 0;
++}
++
+ static int dxv_encode(AVCodecContext *avctx, AVPacket *pkt,
+                       const AVFrame *frame, int *got_packet)
+ {
+@@ -176,7 +261,8 @@ static int dxv_encode(AVCodecContext *avctx, AVPacket *pkt,
+         uint8_t *safe_data[4] = {frame->data[0], 0, 0, 0};
+         int safe_linesize[4] = {frame->linesize[0], 0, 0, 0};
+ 
+-        if (avctx->width != DXV_ALIGN(avctx->width) || avctx->height != DXV_ALIGN(avctx->height)) {
++        if (avctx->width != DXV_ALIGN(avctx->width) || avctx->height != DXV_ALIGN(avctx->height) ||
++            ctx->tex_fmt == DXV_FMT_DXT5) {
+             ret = av_image_alloc(
+                 safe_data,
+                 safe_linesize,
+@@ -207,6 +293,20 @@ static int dxv_encode(AVCodecContext *avctx, AVPacket *pkt,
+                     memset(safe_data[0] + y * safe_linesize[0], 0, safe_linesize[0]);
+                 }
+             }
++
++            /* DXV stores the DXT5 colour premultiplied (its decoder unpremultiplies),
++             * so the frame has to be premultiplied before the texture is compressed. */
++            if (ctx->tex_fmt == DXV_FMT_DXT5) {
++                for (int y = 0; y < DXV_ALIGN(avctx->height); y++) {
++                    uint8_t *linha = safe_data[0] + (ptrdiff_t)y * safe_linesize[0];
++                    for (int x = 0; x < DXV_ALIGN(avctx->width); x++) {
++                        uint8_t *p = linha + 4 * x;
++                        p[0] = (p[0] * p[3] + 127) / 255;
++                        p[1] = (p[1] * p[3] + 127) / 255;
++                        p[2] = (p[2] * p[3] + 127) / 255;
++                    }
++                }
++            }
+         }
+ 
+         ctx->enc.tex_data.out = ctx->tex_data;
+@@ -264,6 +364,11 @@ static av_cold int dxv_init(AVCodecContext *avctx)
+         ctx->enc.tex_funct = texdsp.dxt1_block;
+         ctx->enc.tex_ratio = 8;
+         break;
++    case DXV_FMT_DXT5:
++        ctx->compress_tex = dxv_compress_dxt5;
++        ctx->enc.tex_funct = texdsp.dxt5_block;
++        ctx->enc.tex_ratio = 16;
++        break;
+     default:
+         av_log(avctx, AV_LOG_ERROR, "Invalid format %08X\n", ctx->tex_fmt);
+         return AVERROR_INVALIDDATA;
+@@ -308,8 +413,9 @@ static av_cold int dxv_close(AVCodecContext *avctx)
+ #define OFFSET(x) offsetof(DXVEncContext, x)
+ #define FLAGS     AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
+ static const AVOption options[] = {
+-    { "format", NULL, OFFSET(tex_fmt), AV_OPT_TYPE_INT, { .i64 = DXV_FMT_DXT1 }, DXV_FMT_DXT1, DXV_FMT_DXT1, FLAGS, .unit = "format" },
++    { "format", NULL, OFFSET(tex_fmt), AV_OPT_TYPE_INT, { .i64 = DXV_FMT_DXT1 }, DXV_FMT_DXT1, DXV_FMT_DXT5, FLAGS, .unit = "format" },
+         { "dxt1", "DXT1 (Normal Quality, No Alpha)", 0, AV_OPT_TYPE_CONST, { .i64 = DXV_FMT_DXT1   }, 0, 0, FLAGS, .unit = "format" },
++        { "dxt5", "DXT5 (High Quality, With Alpha)", 0, AV_OPT_TYPE_CONST, { .i64 = DXV_FMT_DXT5   }, 0, 0, FLAGS, .unit = "format" },
+     { NULL },
+ };
+ 
