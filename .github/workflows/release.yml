@@ -1,0 +1,75 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versao no formato 1.2.3"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Definir versao
+        id: versao
+        shell: pwsh
+        run: |
+          $versao = if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            "${{ inputs.versao }}"
+          } else {
+            "${{ github.ref_name }}".TrimStart("v")
+          }
+          Write-Host "Versao: $versao"
+          "valor=$versao" >> $env:GITHUB_OUTPUT
+
+      - name: Testes
+        run: dotnet test tests/CVExplorer.Tests/CVExplorer.Tests.csproj -c Release --nologo
+
+      - name: Publicar (self-contained win-x64)
+        run: >
+          dotnet publish src/CVExplorer.Host/CVExplorer.Host.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:Version=${{ steps.versao.outputs.valor }}
+          -p:RepositorioUrl=https://github.com/${{ github.repository }}
+          -o publish
+
+      - name: Instalar vpk
+        run: dotnet tool install --global vpk
+
+      - name: Empacotar com Velopack
+        shell: pwsh
+        run: |
+          vpk pack `
+            --packId CVExplorer `
+            --packVersion "${{ steps.versao.outputs.valor }}" `
+            --packDir publish `
+            --mainExe CvExplorer.exe `
+            --packTitle "CV Explorer" `
+            --packAuthors "CV Explorer" `
+            --runtime win-x64 `
+            --channel win
+
+      - name: Publicar release no GitHub
+        shell: pwsh
+        run: |
+          vpk upload github `
+            --repoUrl https://github.com/${{ github.repository }} `
+            --token "${{ secrets.GITHUB_TOKEN }}" `
+            --publish `
+            --releaseName "CV Explorer ${{ steps.versao.outputs.valor }}" `
+            --tag "v${{ steps.versao.outputs.valor }}" `
+            --merge

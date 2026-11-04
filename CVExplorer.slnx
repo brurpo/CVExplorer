@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CVExplorer.Host/CVExplorer.Host.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CVExplorer.Tests/CVExplorer.Tests.csproj" />
+  </Folder>
+</Solution>

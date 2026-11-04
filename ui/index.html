@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CV Explorer</title>
+  <link rel="stylesheet" href="./css/theme.css" />
+  <link rel="stylesheet" href="./css/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand" title="CV Explorer">
+      <span class="brand-mark">CV</span>
+      <span class="brand-name">Explorer</span>
+    </div>
+
+    <div class="nav-group">
+      <button id="btn-voltar" class="icon-btn" data-i18n-title="nav.voltar" disabled>
+        <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" /></svg>
+      </button>
+      <button id="btn-avancar" class="icon-btn" data-i18n-title="nav.avancar" disabled>
+        <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg>
+      </button>
+      <button id="btn-subir" class="icon-btn" data-i18n-title="nav.subir">
+        <svg viewBox="0 0 24 24"><path d="M12 19V6M6 12l6-6 6 6" /></svg>
+      </button>
+    </div>
+
+    <nav id="migalhas" class="breadcrumb" aria-label="Caminho"></nav>
+
+    <div class="search-box">
+      <svg viewBox="0 0 24 24" class="search-icon"><circle cx="11" cy="11" r="7" /><path d="M16.5 16.5L21 21" /></svg>
+      <input id="busca" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="busca.placeholder" />
+      <button id="busca-limpar" class="chip-x" hidden data-i18n-title="busca.limpar">×</button>
+    </div>
+
+    <div class="actions">
+      <button id="btn-atualizar" class="icon-btn" data-i18n-title="acoes.atualizar">
+        <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" /></svg>
+      </button>
+      <button id="btn-visualizacao" class="icon-btn" data-i18n-title="acoes.visualizacao">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      </button>
+      <button id="btn-novo" class="icon-btn" data-i18n-title="acoes.novo">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+      </button>
+      <button id="btn-config" class="icon-btn" data-i18n-title="acoes.config">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+      <button id="btn-atualizacao" class="update-pill" hidden></button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <section class="side-section">
+        <header class="side-header">
+          <span data-i18n="lateral.projetos">Projetos</span>
+          <button id="btn-projetos-atualizar" class="mini-btn" data-i18n-title="lateral.atualizarProjetos">⟳</button>
+        </header>
+        <div id="lista-projetos" class="side-list"></div>
+      </section>
+
+      <section class="side-section">
+        <header class="side-header">
+          <span data-i18n="lateral.raizes">Raízes</span>
+          <button id="btn-add-raiz" class="mini-btn" data-i18n-title="lateral.adicionarRaiz">+</button>
+        </header>
+        <div id="lista-raizes" class="side-list"></div>
+      </section>
+    </aside>
+
+    <main class="conteudo">
+      <div id="area-itens" class="area-itens" tabindex="0"></div>
+      <div id="vazio" class="vazio" hidden>
+        <div class="vazio-icone">◇</div>
+        <p class="vazio-titulo" data-i18n="vazio.titulo">Pasta vazia</p>
+        <p class="vazio-texto" data-i18n="vazio.texto">Arraste arquivos para cá ou use Ctrl+V.</p>
+      </div>
+    </main>
+
+    <aside id="preview" class="preview" hidden>
+      <header class="preview-header">
+        <span id="preview-nome" class="preview-nome"></span>
+        <button id="preview-fechar" class="mini-btn">×</button>
+      </header>
+      <div id="preview-corpo" class="preview-corpo"></div>
+      <footer id="preview-meta" class="preview-meta"></footer>
+    </aside>
+  </div>
+
+  <footer class="statusbar">
+    <span id="status-itens" class="status-item"></span>
+    <span id="status-selecao" class="status-item"></span>
+    <span class="status-spacer"></span>
+    <span id="status-busca" class="status-item"></span>
+    <span id="status-espaco" class="status-item"></span>
+    <span id="status-versao" class="status-item muted"></span>
+  </footer>
+
+  <div id="toasts" class="toasts"></div>
+  <div id="progressos" class="progressos"></div>
+  <div id="menu-contexto" class="menu-contexto" hidden></div>
+  <div id="modal-raiz" class="modal-raiz" hidden></div>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

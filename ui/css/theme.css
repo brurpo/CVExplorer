@@ -1,0 +1,121 @@
+/* Tokens do tema: fundo dessaturado escuro, um unico azul de destaque,
+   vermelho/amarelo reservados para estados (erro/aviso). */
+:root {
+  --bg: #0e0f11;
+  --bg-elev: #131417;
+  --surface: #17181b;
+  --surface-2: #1c1e22;
+  --surface-3: #22242a;
+  --border: #232529;
+  --border-strong: #2e3138;
+
+  --text: #e6e7e9;
+  --text-2: #b9bec6;
+  --muted: #8a8f98;
+  --muted-2: #6b707a;
+
+  --accent: #5aa9e6;
+  --accent-strong: #7cc0f5;
+  --accent-dim: rgba(90, 169, 230, 0.14);
+  --accent-dim-2: rgba(90, 169, 230, 0.24);
+
+  --danger: #e5484d;
+  --danger-dim: rgba(229, 72, 77, 0.14);
+  --warning: #f5a524;
+  --warning-dim: rgba(245, 165, 36, 0.14);
+  --ok: #4cc38a;
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+
+  --row-h: 30px;
+  --tile: 168px;
+  --dur: 140ms;
+
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+
+  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "Cascadia Mono", "Consolas", monospace;
+
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+/* Regra explicita: varias classes definem display (grid/flex) e isso venceria o
+   atributo [hidden] do navegador. Sem isso, overlays e paineis escondidos aparecem. */
+[hidden] { display: none !important; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  display: grid;
+  grid-template-rows: 52px minmax(0, 1fr) 26px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 7px 9px;
+  outline: none;
+  transition: border-color var(--dur), box-shadow var(--dur), background var(--dur);
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+::selection { background: var(--accent-dim-2); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: #2a2d33;
+  border-radius: 8px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover { background: #363a42; }
+
+svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.muted { color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

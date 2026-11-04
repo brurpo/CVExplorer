@@ -1,0 +1,21 @@
+# Build
+bin/
+obj/
+*.user
+.vs/
+
+# Ferramentas locais (SDK/ffmpeg baixados pelo scripts/setup.ps1)
+.tools/
+
+# Pacotes de release gerados pelo Velopack
+releases/
+publish/
+*.nupkg
+
+# Dados de teste locais
+.sandbox/
+
+# Sistema
+Thumbs.db
+desktop.ini
+.DS_Store

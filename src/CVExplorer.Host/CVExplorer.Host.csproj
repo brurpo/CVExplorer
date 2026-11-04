@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>CvExplorer</AssemblyName>
+    <RootNamespace>CVExplorer.Host</RootNamespace>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Version>0.1.0</Version>
+    <SatelliteResourceLanguages>pt-BR</SatelliteResourceLanguages>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- WebView2 traz assemblies WPF e WinForms; o conflito de WindowsBase e inofensivo aqui. -->
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+
+    <!-- Injetado pelo CI: vira a origem das atualizacoes automaticas. -->
+    <RepositorioUrl Condition="'$(RepositorioUrl)' == ''">https://github.com/SEU-USUARIO/CVExplorer</RepositorioUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>RepositorioUrl</_Parameter1>
+      <_Parameter2>$(RepositorioUrl)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Magick.NET-Q8-x64" Version="15.0.0" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
+  </ItemGroup>
+
+  <!-- A interface e HTML/CSS/JS puro, copiada como esta: sem etapa de build. -->
+  <ItemGroup>
+    <Content Include="..\..\ui\**\*.*">
+      <Link>ui\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>
