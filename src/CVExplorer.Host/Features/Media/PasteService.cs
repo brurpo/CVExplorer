@@ -69,6 +69,9 @@ public sealed class PasteService
 
     public static bool EhVideo(string caminho) => ExtensoesVideo.Contains(Path.GetExtension(caminho));
 
+    /// <summary>ProRes/DNxHR/etc: reencodar so perderia qualidade, entao colar copia o arquivo.</summary>
+    public static bool EhCodecDeEdicao(string? codec) => codec is not null && CodecsDeEdicao.Contains(codec);
+
     public async Task<PasteOutcome> PasteAsync(
         IReadOnlyList<string> origens,
         string destino,
@@ -121,7 +124,7 @@ public sealed class PasteService
                 continue;
             }
 
-            if (CodecsDeEdicao.Contains(info.Codec) && !string.IsNullOrEmpty(info.PixFmt))
+            if (PasteService.EhCodecDeEdicao(info.Codec) && !string.IsNullOrEmpty(info.PixFmt))
             {
                 // Ja e um codec de edicao: copiar preserva qualidade melhor do que reencodar.
                 copiar.Add(origem);

@@ -3,7 +3,7 @@ import { t } from './i18n.js';
 import * as fmt from './format.js';
 import * as ui from './ui.js';
 
-const PERFIS = ['auto', 'prores422lt', 'prores422', 'prores422hq', 'prores4444', 'dnxhr_lb', 'dnxhr_hqx', 'proxy'];
+const PERFIS = ['auto', 'prores422lt', 'prores422', 'prores422hq', 'prores4444', 'dnxhr_lb', 'dnxhr_sq', 'dnxhr_hqx', 'proxy'];
 
 export function pedirTexto({ titulo, rotulo, valor = '', dica }) {
   return new Promise((resolve) => {
@@ -397,6 +397,96 @@ export async function registrarProjeto(caminho) {
 
 // ---------- conversão de vídeo ----------
 
+/**
+ * Pergunta "converter?" ao colar vídeos. Retorna { acao: 'converter' | 'original', naoPerguntar }
+ * ou null se o usuário fechar o diálogo (cancela o colar inteiro).
+ * Vídeos que já estão em codec de edição não entram na conta: esses são copiados de qualquer forma.
+ */
+export async function confirmarConversao(videos, totalItens = videos.length, config = {}) {
+  const sondagens = await Promise.all(
+    videos.slice(0, 24).map(async (caminho) => {
+      try {
+        return { caminho, dados: await call('media.probe', { caminho, perfil: config?.PerfilVideoPadrao ?? 'auto' }) };
+      } catch {
+        return { caminho, dados: null };
+      }
+    }),
+  );
+
+  const converter = sondagens.filter((s) => s.dados?.info && !s.dados.jaEditavel);
+
+  if (converter.length === 0) {
+    // Nada a converter (já é ProRes/DNxHR ou não deu para ler): segue o colar normal.
+    if (sondagens.some((s) => !s.dados && videos.includes(s.caminho))) {
+      ui.toast(t('video.semFfmpeg'), 'aviso', 6000);
+    }
+    return { acao: 'original', naoPerguntar: false };
+  }
+
+  const principal = converter[0];
+  const info = principal.dados.info;
+  const plano = principal.dados.plano;
+  const totalOriginal = converter.length;
+  const estimadoTotal = converter.reduce((soma, s) => soma + (s.dados.plano.TamanhoEstimadoBytes ?? 0), 0);
+
+  const corpo = document.createElement('div');
+
+  const detalhes = document.createElement('div');
+  detalhes.style.display = 'grid';
+  detalhes.style.gridTemplateColumns = 'auto 1fr';
+  detalhes.style.gap = '5px 14px';
+  detalhes.style.fontSize = '12px';
+  detalhes.innerHTML = `
+    <span style="color:var(--muted)">${t('video.origem')}</span><span style="color:var(--text-2)">${escapar(info.Codec)} · ${info.Largura} × ${info.Altura} · ${Number(info.Fps).toFixed(2)} fps · ${info.DezBits ? '10+' : '8'} bits${info.BitrateVideoMbps ? ` · ${Number(info.BitrateVideoMbps).toFixed(0)} Mbps` : ''}</span>
+    <span style="color:var(--muted)">${t('video.duracao')}</span><span style="color:var(--text-2)">${info.duracaoTexto}</span>
+    <span style="color:var(--muted)">${t('video.pastaDestino')}</span><span style="color:var(--text-2)">${escapar(plano.NomeExibicao)}${estimadoTotal > 0 ? ` · ~${fmt.bytes(estimadoTotal)}` : ''}</span>
+  `;
+
+  const avisos = document.createElement('div');
+  avisos.style.display = 'flex';
+  avisos.style.flexDirection = 'column';
+  avisos.style.gap = '6px';
+  if (plano.Motivo) avisos.appendChild(ui.caixaAviso(plano.Motivo, 'info'));
+  for (const aviso of plano.avisos ?? []) avisos.appendChild(ui.caixaAviso(aviso, 'aviso'));
+
+  const naoPerguntar = document.createElement('label');
+  naoPerguntar.className = 'check-linha';
+  const caixa = document.createElement('input');
+  caixa.type = 'checkbox';
+  naoPerguntar.append(caixa, document.createTextNode(t('video.naoPerguntar')));
+
+  corpo.append(
+    detalhes,
+    ui.caixaAviso(t('video.confirmarDescricao'), 'info'),
+    avisos,
+    naoPerguntar,
+  );
+
+  return new Promise((resolve) => {
+    let resolvido = false;
+    const concluir = (acao, fechar) => {
+      if (!resolvido) {
+        resolvido = true;
+        resolve({ acao, naoPerguntar: caixa.checked });
+      }
+      fechar();
+    };
+
+    ui.modal({
+      titulo: t('video.confirmarTitulo'),
+      descricao: totalOriginal > 1 || totalItens > 1
+        ? t('video.confirmarVarios', { n: totalOriginal })
+        : fmt.nomearArquivo(principal.caminho),
+      corpo,
+      botoes: [
+        { texto: t('video.colarOriginal'), acao: (f) => concluir('original', f) },
+        { texto: t('video.converter'), tipo: 'primario', acao: (f) => concluir('converter', f) },
+      ],
+      aoFechar: () => { if (!resolvido) resolve(null); },
+    });
+  });
+}
+
 export async function converterVideo(item, config) {
   const caminho = item.Caminho ?? item.caminho;
   let info;
@@ -636,6 +726,7 @@ export async function abrirConfiguracoes(config, info, aoSalvar) {
 
   const ocultos = criarCheck(t('config.ocultos'), config.MostrarOcultos);
   const converterColar = criarCheck(t('config.converterColar'), config.ConverterVideoAoColar);
+  const perguntarConversao = criarCheck(t('config.perguntarConversao'), config.PerguntarAntesDeConverter !== false);
   const verificar = criarCheck(t('config.verificarAtualizacoes'), config.VerificarAtualizacoes);
 
   const linhaDupla1 = document.createElement('div');
@@ -659,6 +750,7 @@ export async function abrirConfiguracoes(config, info, aoSalvar) {
     ui.campo(t('config.perfilPadrao'), perfil),
     ocultos.label,
     converterColar.label,
+    perguntarConversao.label,
     verificar.label,
     abrirDados,
   );
@@ -683,6 +775,7 @@ export async function abrirConfiguracoes(config, info, aoSalvar) {
             PerfilVideoPadrao: perfil.value,
             MostrarOcultos: ocultos.caixa.checked,
             ConverterVideoAoColar: converterColar.caixa.checked,
+            PerguntarAntesDeConverter: perguntarConversao.caixa.checked,
             VerificarAtualizacoes: verificar.caixa.checked,
           };
 

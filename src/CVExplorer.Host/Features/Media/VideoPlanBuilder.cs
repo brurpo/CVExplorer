@@ -69,6 +69,7 @@ public static class VideoPlanBuilder
         ("prores422hq", new PerfilInfo("ProRes 422 HQ", "prores_ks", "yuv422p10le", 3, 220, "para origens de alto bitrate ou 10 bits")),
         ("prores4444", new PerfilInfo("ProRes 4444", "prores_ks", "yuv444p10le", 4, 330, "4:4:4 e alpha")),
         ("dnxhr_hqx", new PerfilInfo("DNxHR HQX", "dnxhd", "yuv422p10le", 0, 220, "12 bits, fluxo Avid")),
+        ("dnxhr_sq", new PerfilInfo("DNxHR SQ", "dnxhd", "yuv422p", 0, 145, "8 bits, decodificacao muito rapida")),
     };
 
     public const long MargemSegurancaBytes = 1L * 1024 * 1024 * 1024;

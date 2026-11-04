@@ -885,8 +885,23 @@ export async function colar() {
 async function colarCaminhos(caminhos, recortarItens) {
   const destino = state.caminho;
   const opId = `colar-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  const temVideo = caminhos.some((c) => fmt.ehVideo(c));
-  const converter = temVideo && state.config.ConverterVideoAoColar !== false;
+  const videos = caminhos.filter((c) => fmt.ehVideo(c));
+  const converterConfigurado = videos.length > 0 && state.config.ConverterVideoAoColar !== false;
+
+  let converter = converterConfigurado;
+
+  if (converterConfigurado && state.config.PerguntarAntesDeConverter !== false) {
+    const escolha = await dialogs.confirmarConversao(videos, caminhos.length, state.config);
+    if (!escolha) return;
+
+    if (escolha.naoPerguntar) {
+      state.config.PerguntarAntesDeConverter = false;
+      call('settings.save', state.config).catch(() => {});
+    }
+
+    // "Colar original": o arquivo entra como está, sem reencode.
+    converter = escolha.acao === 'converter';
+  }
 
   try {
     if (converter) {

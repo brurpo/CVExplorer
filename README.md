@@ -114,6 +114,12 @@ e timeout por item (handlers de shell podem travar em rede).
 Regra central: **colar vídeo não copia o original.** O arquivo é transcodificado direto na pasta
 de destino e é esse `.mov` que entra no projeto. O original permanece intacto onde estava.
 
+Na hora de colar aparece uma confirmação — **Converter** ou **Colar original** — com formato de
+destino e tamanho estimado. "Colar original" copia o arquivo como está (sem perda, sem economia).
+A caixa *Não perguntar de novo* grava a escolha daquele momento em `config.json`
+(`PerguntarAntesDeConverter`); a opção pode ser reativada em **Configurações**. Arquivos que já
+estão em codec de edição (ProRes, DNxHR, CineForm…) não geram pergunta: são sempre copiados.
+
 ### Por que o arquivo cresce (e como evitar)
 
 ProRes é **intra-frame**: cada quadro é comprimido sozinho. MXF/H.264 de câmera são **long-GOP**:
@@ -147,7 +153,8 @@ O alvo é o menor perfil intra-frame que ainda entregue **~2× o bitrate de víd
 | Sem espaço em disco | cai para o menor perfil que cabe |
 
 O diálogo de conversão mostra o tamanho estimado de **cada** perfil e a porcentagem em relação ao
-arquivo atual, então a decisão de espaço é consciente.
+arquivo atual, então a decisão de espaço é consciente. Perfis disponíveis: `Automático`,
+`ProRes 422 Proxy/LT/422/HQ/4444` e `DNxHR LB/SQ/HQX`.
 
 O app também preserva resolução, fps, **timecode**, tags de cor (primárias/transferência/matriz)
 e áudio em PCM 24 bits/48 kHz; VFR (celular/tela) passa sem duplicar quadros. Avisa — sem fingir
@@ -155,6 +162,60 @@ que resolve — quando há **HDR10 estático** ou **Dolby Vision**: esses metada
 
 > Para economizar mais que o próprio MXF mantendo intra-frame, use **DNxHR LB** no diálogo
 > (ficou em 292 MB, abaixo dos 323 MB do MXF). É 8 bits, então não adicione headroom de cor.
+
+### ProRes ou DNxHR no After Effects (Windows)?
+
+Pergunta justa, e o senso comum de que "DNx é mais rápido no Windows" **não se sustenta em dado**.
+O que existe, medido e verificado:
+
+**1. Os dois decodificam nativamente.** Verificado nos binários desta máquina: o AE 2026 traz
+`ProResOpt.dll` (decoder ProRes da própria Adobe) e `DNxSDK-vs2019.dll` (SDK oficial da Avid 3.0).
+Não existe mais dependência de QuickTime 7 no Windows para nenhum dos dois.
+
+**2. A velocidade de decode acompanha o bitrate, não o codec.** Medição local, mesmo MXF, só decode
+(`-f null`), 1.350 quadros 1080p:
+
+| Arquivo | Tamanho | Decode | × tempo real |
+|---|---|---|---|
+| MXF origem (MPEG-2 long-GOP, 50 Mbps) | 322,9 MB | 1,8 s | 5,8× |
+| **DNxHR LB** (~43 Mbps) | 242,6 MB | 0,45 s | **99×** |
+| **ProRes 422 LT** (~102 Mbps) | 541,4 MB | 0,74 s | 61× |
+| ProRes 422 HQ (~220 Mbps) | 1.156,3 MB | 1,21 s | 37× |
+| DNxHR HQX (~208 Mbps) | 1.181,3 MB | 1,16 s | 39× |
+
+Leitura: **DNxHR HQX e ProRes 422 HQ empatam** (mesma faixa de bitrate), **LB é o mais rápido dos
+quatro** e **ProRes LT fica no meio**. Codec não muda a ordem — o que manda é quantos bytes por
+segundo precisam ser lidos e as mesmas tabelas de decodificação.
+
+**3. A especificação oficial confirma esse empate.**
+
+| Faixa | DNxHR | ProRes |
+|---|---|---|
+| Menor | LB ≈ 43 Mbps (29,97p) | 422 Proxy 45 Mbps |
+| Média | SQ ≈ 138 Mbps | 422 147 Mbps |
+| Alta | HQ ≈ 208 Mbps · **HQX ≈ 208 Mbps (12 bits)** | 422 HQ 220 Mbps |
+| 4:4:4 | 444 ≈ 417 Mbps | 4444 330 Mbps |
+
+Fontes: [Avid — DNx naming scheme and data rates](https://kb.avid.com/pkb/articles/en_US/Knowledge/Avid-DNx-naming-scheme-and-data-rates)
+e [Apple ProRes White Paper](https://www.apple.com/final-cut-pro/docs/Apple_ProRes.pdf).
+
+**4. Não existe benchmark de scrub dentro do After Effects** — nem da Adobe, nem da Puget (o
+Puget Bench for AE fixa a saída em ProRes 422 e varia hardware, não codec). O dado público mais
+próximo é do Premiere em 4K ([Puget](https://www.pugetsystems.com/labs/articles/premiere-pro-cc-2017-mac-pro-vs-pc-performance-904/)):
+DNxHR HQ e ProRes 422 HQ tocam em resolução cheia; só ProRes 4444 cai para 1/2 — coerente com o
+bitrate 1,5× maior dele.
+
+**5. Onde DNxHR leva desvantagem real:** a Adobe **não lista DNxHR** na
+[página oficial de formatos do AE](https://helpx.adobe.com/after-effects/desktop/get-started/supported-file-formats/supported-file-formats.html)
+(lista "Apple ProRes codec — Import and Export" explicitamente). Funciona — o SDK da Avid está lá —
+mas ProRes é o único caminho *documentado*. Em compensação, os bugs ativos hoje (2021→2025) são de
+**ProRes 4444 com alpha** na exportação do AE/AME.
+
+**Conclusão adotada pelo app:** o padrão automático continua **ProRes**, porque bitrate igual =
+desempenho igual no AE e ProRes é o formato documentado (melhor para round-trip e entrega). Para
+tamanho, os perfis que realmente economizam são **DNxHR LB** e **ProRes 422 Proxy**; **HQ/4444 não
+têm ganho nenhum sobre fonte 8-bit** — só custam 4× o disco. Trocar para DNxHR é uma escolha de
+tamanho, não de velocidade.
 
 ### ffmpeg
 

@@ -41,6 +41,9 @@ public sealed class AppSettings
     /// </summary>
     public bool ConverterVideoAoColar { get; set; } = true;
 
+    /// <summary>Perguntar "converter ou colar o original?" ao colar um video.</summary>
+    public bool PerguntarAntesDeConverter { get; set; } = true;
+
     /// <summary>auto | prores422hq | prores422 | prores4444 | dnxhr_hqx | proxy</summary>
     public string PerfilVideoPadrao { get; set; } = "auto";
 

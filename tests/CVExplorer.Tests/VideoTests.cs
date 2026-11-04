@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
+using CVExplorer.Host;
 using CVExplorer.Host.Features.Media;
 using CVExplorer.Host.Features.Thumbnails;
 
@@ -237,6 +238,18 @@ public sealed class FfmpegCommandTests
     }
 
     [Fact]
+    public void DnxHrSqUsaPerfilSqE8Bits()
+    {
+        var info = new MediaInfo { Caminho = @"C:\a.mxf", Largura = 1920, Altura = 1080, PixFmt = "yuv422p", TemAudio = true };
+        var plano = VideoPlanBuilder.Choose(info, "dnxhr_sq", 0);
+        var args = FfmpegCommandBuilder.Build(info, plano, "e.mxf", "s.mov");
+
+        AssertContains(args, "-c:v", "dnxhd");
+        AssertContains(args, "-profile:v", "dnxhr_sq");
+        AssertContains(args, "-pix_fmt", "yuv422p");
+    }
+
+    [Fact]
     public void VfrPreservaQuadros()
     {
         var info = new MediaInfo
@@ -290,6 +303,34 @@ public sealed class FfmpegCommandTests
         var indice = args.IndexOf(chave);
         Assert.True(indice >= 0, $"esperava o argumento {chave}");
         Assert.Equal(valor, args[indice + 1]);
+    }
+}
+
+public sealed class CodecDeEdicaoTests
+{
+    [Theory]
+    [InlineData("prores")]
+    [InlineData("dnxhd")]
+    [InlineData("cfhd")]
+    public void CodecsDeEdicaoNaoSaoReencodados(string codec)
+    {
+        Assert.True(PasteService.EhCodecDeEdicao(codec));
+    }
+
+    [Theory]
+    [InlineData("h264")]
+    [InlineData("mpeg2video")]
+    [InlineData("hevc")]
+    [InlineData(null)]
+    public void CodecsDeCameraPassamPorConversao(string? codec)
+    {
+        Assert.False(PasteService.EhCodecDeEdicao(codec));
+    }
+
+    [Fact]
+    public void PerguntarAntesDeConverterVemLigadoPorPadrao()
+    {
+        Assert.True(new AppSettings().PerguntarAntesDeConverter);
     }
 }
 

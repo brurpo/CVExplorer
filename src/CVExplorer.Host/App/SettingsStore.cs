@@ -53,6 +53,7 @@ public sealed class SettingsStore
             c.MostrarOcultos = settings.MostrarOcultos;
             c.CaminhoFfmpeg = settings.CaminhoFfmpeg;
             c.ConverterVideoAoColar = settings.ConverterVideoAoColar;
+            c.PerguntarAntesDeConverter = settings.PerguntarAntesDeConverter;
             c.PerfilVideoPadrao = settings.PerfilVideoPadrao;
             c.ParalelismoBusca = Math.Clamp(settings.ParalelismoBusca, 1, 32);
             c.VerificarAtualizacoes = settings.VerificarAtualizacoes;

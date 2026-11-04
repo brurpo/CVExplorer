@@ -55,6 +55,7 @@ public static class FfmpegCommandBuilder
             {
                 "dnxhr_hqx" => "dnxhr_hqx",
                 "dnxhr_lb" => "dnxhr_lb",
+                "dnxhr_sq" => "dnxhr_sq",
                 _ => "dnxhr_sq",
             });
             args.Add("-pix_fmt");

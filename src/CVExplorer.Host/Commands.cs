@@ -439,6 +439,7 @@ public static class Commands
                     estimadoTexto = VideoPlanBuilder.FormatBytes(plano.TamanhoEstimadoBytes),
                     avisos = plano.Avisos,
                 },
+                jaEditavel = PasteService.EhCodecDeEdicao(info.Codec),
                 estimativas = VideoPlanBuilder.Estimates(info),
             };
         }, operacao: true);
