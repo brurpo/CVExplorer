@@ -4,6 +4,9 @@ namespace CVExplorer.Host.Features.Media;
 
 public sealed class PasteEvent
 {
+    /// <summary>Precisa bater com o card de progresso criado pela interface.</summary>
+    public string OperacaoId { get; set; } = string.Empty;
+
     /// <summary>inicio | convertendo | copiado | convertido | erro | fim</summary>
     public string Tipo { get; set; } = string.Empty;
 
@@ -102,6 +105,7 @@ public sealed class PasteService
 
             await onEvent(new PasteEvent
             {
+                OperacaoId = operacaoId,
                 Tipo = "convertendo",
                 Arquivo = Path.GetFileName(origem),
                 Percentual = 0,
@@ -134,6 +138,7 @@ public sealed class PasteService
                 operacaoId,
                 async p => await onEvent(new PasteEvent
                 {
+                    OperacaoId = operacaoId,
                     Tipo = "convertendo",
                     Arquivo = p.Arquivo,
                     Percentual = p.Percentual,
@@ -149,6 +154,7 @@ public sealed class PasteService
                 outcome.Convertidos.Add(resultado.Saida);
                 await onEvent(new PasteEvent
                 {
+                    OperacaoId = operacaoId,
                     Tipo = "convertido",
                     Arquivo = Path.GetFileName(resultado.Saida),
                     Destino = resultado.Saida,
@@ -164,6 +170,7 @@ public sealed class PasteService
                 outcome.Erros.Add($"{Path.GetFileName(origem)}: {resultado.Erro}");
                 await onEvent(new PasteEvent
                 {
+                    OperacaoId = operacaoId,
                     Tipo = "erro",
                     Arquivo = Path.GetFileName(origem),
                     Mensagem = resultado.Erro,

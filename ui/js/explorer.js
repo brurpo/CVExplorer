@@ -16,16 +16,22 @@ const buscaInput = document.getElementById('busca');
 const btnVoltar = document.getElementById('btn-voltar');
 const btnAvancar = document.getElementById('btn-avancar');
 const btnLimparBusca = document.getElementById('busca-limpar');
+const areaEndereco = document.getElementById('endereco-area');
+const entradaEndereco = document.getElementById('endereco');
+const pillDigitacao = document.getElementById('digitacao');
+const cabecalhoEl = document.getElementById('cabecalho-lista');
 
 const ORDENADOR = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
 const PAD = 12;
 const GAP = 10;
 
 let espacoVirtual = null;
-let cabecalhoLista = null;
 let opDirAtual = null;
 let agendado = false;
 let temporizadorBusca = null;
+let bufferDigitacao = '';
+let horaDigitacao = 0;
+let temporizadorDigitacao = null;
 
 export function iniciarExplorer() {
   espacoVirtual = document.createElement('div');
@@ -37,7 +43,10 @@ export function iniciarExplorer() {
   area.addEventListener('contextmenu', aoMenuContexto);
   area.addEventListener('scroll', desenhar, { passive: true });
   document.addEventListener('keydown', aoTeclar);
-  window.addEventListener('resize', desenhar);
+  window.addEventListener('resize', () => {
+    desenhar();
+    if (state.caminho) atualizarMigalhas(state.caminho);
+  });
 
   btnVoltar.addEventListener('click', voltar);
   btnAvancar.addEventListener('click', avancar);
@@ -51,6 +60,10 @@ export function iniciarExplorer() {
     sairDaBusca();
   });
 
+  carregarPreferencias();
+  aplicarColunas();
+  iniciarEndereco();
+
   on('dir.batch', (dados) => {
     if (dados.opId !== opDirAtual) return;
     state.itens.push(...dados.itens);
@@ -60,6 +73,7 @@ export function iniciarExplorer() {
   on('dir.done', (dados) => {
     if (dados.opId !== opDirAtual) return;
     state.carregando = false;
+    ordenarListas();
     desenhar();
   });
 
@@ -137,7 +151,7 @@ export async function navegar(caminho, { historico = true } = {}) {
   }
 
   state.carregando = false;
-  state.itens.sort(ordenar);
+  ordenarListas();
   desenhar();
   atualizarMigalhas(caminho);
 
@@ -193,10 +207,28 @@ async function atualizarEspaco(caminho) {
 }
 
 function atualizarMigalhas(caminho) {
-  migalhas.replaceChildren();
+  entradaEndereco.hidden = true;
+  migalhas.hidden = false;
   const partes = partesDeCaminho(caminho);
 
-  partes.forEach((parte, indice) => {
+  desenharMigalhas(partes, false);
+
+  // Em janelas estreitas, colapsa o meio (como o Explorer) em vez de picar todo nome.
+  requestAnimationFrame(() => {
+    if (migalhas.scrollWidth > migalhas.clientWidth + 2 && partes.length > 4) {
+      desenharMigalhas(partes, true);
+    }
+  });
+}
+
+function desenharMigalhas(partes, compacto) {
+  migalhas.replaceChildren();
+
+  const visiveis = compacto && partes.length > 4
+    ? [partes[0], null, partes[partes.length - 2], partes[partes.length - 1]]
+    : partes;
+
+  visiveis.forEach((parte, indice) => {
     if (indice > 0) {
       const sep = document.createElement('span');
       sep.className = 'migalha-sep';
@@ -204,8 +236,18 @@ function atualizarMigalhas(caminho) {
       migalhas.appendChild(sep);
     }
 
+    if (parte === null) {
+      const reticencias = document.createElement('button');
+      reticencias.className = 'migalha';
+      reticencias.textContent = '…';
+      reticencias.title = t('endereco.editar');
+      reticencias.addEventListener('click', entrarEdicaoEndereco);
+      migalhas.appendChild(reticencias);
+      return;
+    }
+
     const botao = document.createElement('button');
-    botao.className = `migalha${indice === partes.length - 1 ? ' atual' : ''}`;
+    botao.className = `migalha${indice === visiveis.length - 1 ? ' atual' : ''}`;
     botao.textContent = parte.nome;
     botao.title = parte.caminho;
     botao.addEventListener('click', () => navegar(parte.caminho));
@@ -256,7 +298,176 @@ function ordenar(a, b) {
   const pastaA = a.Pasta ?? a.pasta;
   const pastaB = b.Pasta ?? b.pasta;
   if (pastaA !== pastaB) return pastaA ? -1 : 1;
-  return ORDENADOR.compare(a.Nome ?? a.nome, b.Nome ?? b.nome);
+
+  const { campo, desc } = state.ordenacao;
+  const nomeA = a.Nome ?? a.nome;
+  const nomeB = b.Nome ?? b.nome;
+
+  let comparacao;
+  if (campo === 'tamanho') {
+    comparacao = (a.Tamanho ?? a.tamanho ?? 0) - (b.Tamanho ?? b.tamanho ?? 0);
+  } else if (campo === 'modificado') {
+    comparacao = new Date(a.Modificado ?? a.modificado) - new Date(b.Modificado ?? b.modificado);
+  } else {
+    comparacao = ORDENADOR.compare(nomeA, nomeB);
+  }
+
+  if (comparacao === 0) {
+    comparacao = ORDENADOR.compare(nomeA, nomeB);
+  }
+
+  return desc ? -comparacao : comparacao;
+}
+
+function ordenarListas() {
+  state.itens.sort(ordenar);
+  state.busca.resultados.sort(ordenar);
+}
+
+function aplicarOrdenacao() {
+  ordenarListas();
+  localStorage.setItem('cvexplorer:ordenacao', JSON.stringify(state.ordenacao));
+  atualizarSetasOrdenacao();
+  desenhar();
+}
+
+function alternarOrdenacao(campo) {
+  if (!campo) return;
+
+  if (state.ordenacao.campo === campo) {
+    state.ordenacao.desc = !state.ordenacao.desc;
+  } else {
+    state.ordenacao.campo = campo;
+    state.ordenacao.desc = campo !== 'nome';
+  }
+
+  aplicarOrdenacao();
+}
+
+function atualizarSetasOrdenacao() {
+  if (!cabecalhoEl.querySelector('[data-campo]')) return;
+
+  for (const celula of cabecalhoEl.querySelectorAll('[data-campo]')) {
+    const ativo = celula.dataset.campo === state.ordenacao.campo;
+    celula.classList.toggle('ordenado', ativo);
+    const seta = celula.querySelector('.seta');
+    if (seta) {
+      seta.textContent = ativo ? (state.ordenacao.desc ? '▼' : '▲') : '';
+    }
+  }
+}
+
+// ---------- colunas redimensionáveis ----------
+
+function aplicarColunas() {
+  // Na raiz: vale para o cabecalho (fora do scroller) e para as linhas.
+  const raiz = document.documentElement;
+  raiz.style.setProperty('--w-tam', `${state.colunas.tamanho}px`);
+  raiz.style.setProperty('--w-data', `${state.colunas.data}px`);
+}
+
+function garantirAlca(coluna) {
+  const alca = document.createElement('div');
+  alca.className = 'alca';
+  alca.title = t('coluna.redimensionar');
+
+  // Captura de ponteiro: os eventos continuam chegando mesmo se o mouse
+  // sair do cabecalho durante o arraste.
+  alca.addEventListener('pointerdown', (evento) => {
+    evento.preventDefault();
+    evento.stopPropagation();
+
+    const inicioX = evento.clientX;
+    const larguraInicial = state.colunas[coluna];
+    try { alca.setPointerCapture(evento.pointerId); } catch { /* ponteiro sintetico */ }
+    document.body.classList.add('redimensionando');
+
+    const mover = (e) => {
+      const largura = Math.max(56, Math.min(460, larguraInicial + (e.clientX - inicioX)));
+      state.colunas[coluna] = Math.round(largura);
+      aplicarColunas();
+    };
+
+    const soltar = () => {
+      alca.removeEventListener('pointermove', mover);
+      alca.removeEventListener('pointerup', soltar);
+      alca.removeEventListener('pointercancel', soltar);
+      document.body.classList.remove('redimensionando');
+      try { alca.releasePointerCapture(evento.pointerId); } catch { /* ja liberado */ }
+      localStorage.setItem('cvexplorer:colunas', JSON.stringify(state.colunas));
+      desenhar();
+    };
+
+    alca.addEventListener('pointermove', mover);
+    alca.addEventListener('pointerup', soltar);
+    alca.addEventListener('pointercancel', soltar);
+  });
+
+  alca.addEventListener('click', (e) => e.stopPropagation());
+  return alca;
+}
+
+function carregarPreferencias() {
+  try {
+    const colunas = JSON.parse(localStorage.getItem('cvexplorer:colunas') ?? 'null');
+    if (colunas && typeof colunas.tamanho === 'number' && typeof colunas.data === 'number') {
+      state.colunas = {
+        tamanho: Math.min(460, Math.max(56, colunas.tamanho)),
+        data: Math.min(460, Math.max(56, colunas.data)),
+      };
+    }
+
+    const ordenacao = JSON.parse(localStorage.getItem('cvexplorer:ordenacao') ?? 'null');
+    if (ordenacao && ['nome', 'tamanho', 'modificado'].includes(ordenacao.campo)) {
+      state.ordenacao = { campo: ordenacao.campo, desc: Boolean(ordenacao.desc) };
+    }
+  } catch {
+    // preferencias corrompidas: segue com os padroes
+  }
+}
+
+function garantirCabecalho() {
+  if (cabecalhoEl.querySelector('[data-campo]')) {
+    atualizarSetasOrdenacao();
+    return;
+  }
+
+  const colunas = [
+    { campo: null, texto: '' },
+    { campo: 'nome', texto: t('coluna.nome') },
+    { campo: 'tamanho', texto: t('preview.tamanho'), redimensionavel: 'tamanho' },
+    { campo: 'modificado', texto: t('preview.modificado'), redimensionavel: 'data' },
+  ];
+
+  cabecalhoEl.replaceChildren();
+
+  for (const coluna of colunas) {
+    if (!coluna.campo) {
+      cabecalhoEl.appendChild(document.createElement('span'));
+      continue;
+    }
+
+    const celula = document.createElement('button');
+    celula.className = 'cabecalho-celula';
+    celula.dataset.campo = coluna.campo;
+    celula.type = 'button';
+    celula.title = t('coluna.ordenar', { coluna: coluna.texto });
+    celula.append(document.createTextNode(coluna.texto));
+
+    const seta = document.createElement('span');
+    seta.className = 'seta';
+    celula.appendChild(seta);
+
+    celula.addEventListener('click', () => alternarOrdenacao(coluna.campo));
+
+    if (coluna.redimensionavel) {
+      celula.appendChild(garantirAlca(coluna.redimensionavel));
+    }
+
+    cabecalhoEl.appendChild(celula);
+  }
+
+  atualizarSetasOrdenacao();
 }
 
 function renderizar() {
@@ -264,9 +475,9 @@ function renderizar() {
   const total = itens.length;
 
   vazio.hidden = total > 0 || state.carregando;
+  cabecalhoEl.hidden = state.visao !== 'lista' || total === 0;
 
   if (state.visao === 'grade') {
-    if (cabecalhoLista) { cabecalhoLista.remove(); cabecalhoLista = null; }
     renderizarGrade(itens);
   } else {
     renderizarLista(itens);
@@ -366,23 +577,13 @@ function criarTelha(item, coluna, linha, largura, altura, alturaLinha) {
 }
 
 function renderizarLista(itens) {
-  if (!cabecalhoLista) {
-    cabecalhoLista = document.createElement('div');
-    cabecalhoLista.className = 'col-cabecalho';
-    const colunas = ['', 'Nome', t('preview.tamanho'), t('preview.modificado')];
-    for (const texto of colunas) {
-      const span = document.createElement('span');
-      span.textContent = texto;
-      cabecalhoLista.appendChild(span);
-    }
-  }
+  garantirCabecalho();
 
   const alturaLinha = 28;
-  const alturaCabecalho = 32;
-  espacoVirtual.style.height = `${alturaCabecalho + itens.length * alturaLinha + 20}px`;
+  espacoVirtual.style.height = `${itens.length * alturaLinha + 20}px`;
 
   const topo = area.scrollTop;
-  const primeira = Math.max(0, Math.floor((topo - alturaCabecalho) / alturaLinha) - 1);
+  const primeira = Math.max(0, Math.floor(topo / alturaLinha) - 1);
   const ultima = Math.min(itens.length - 1, Math.ceil((topo + area.clientHeight) / alturaLinha) + 1);
 
   const fragmento = document.createDocumentFragment();
@@ -398,7 +599,7 @@ function renderizarLista(itens) {
     const linha = document.createElement('div');
     linha.className = `row${state.selecao.has(caminho) ? ' selecionado' : ''}`;
     linha.dataset.caminho = caminho;
-    linha.style.top = `${alturaCabecalho + indice * alturaLinha}px`;
+    linha.style.top = `${indice * alturaLinha}px`;
 
     const iconeEl = document.createElement('span');
     iconeEl.className = 'row-icone';
@@ -422,7 +623,6 @@ function renderizarLista(itens) {
   }
 
   area.querySelectorAll('.tile,.row').forEach((el) => el.remove());
-  if (!cabecalhoLista.isConnected) area.appendChild(cabecalhoLista);
   area.appendChild(fragmento);
 }
 
@@ -693,22 +893,27 @@ async function colarCaminhos(caminhos, recortarItens) {
       const card = ui.progresso({ id: opId, titulo: t('progresso.convertendo'), subtitulo: '' });
       card.aoCancelar = () => call('media.cancel', { opId }).catch(() => {});
 
-      const resultado = await call('media.paste', { origens: caminhos, destino, opId });
-      card.fechar(0);
+      try {
+        const resultado = await call('media.paste', { origens: caminhos, destino, opId });
+        card.fechar(400);
 
-      if (resultado?.erros?.length) {
-        ui.toast(resultado.erros[0], 'erro', 7000);
-      }
+        if (resultado?.erros?.length) {
+          ui.toast(resultado.erros[0], 'erro', 9000);
+        }
 
-      const convertidos = resultado?.convertidos?.length ?? 0;
-      const copiados = resultado?.copiados?.length ?? 0;
-      if (convertidos + copiados > 0) {
-        ui.toast(t('toast.colado', { n: convertidos + copiados }), 'ok', 2600);
-      }
+        const convertidos = resultado?.convertidos?.length ?? 0;
+        const copiados = resultado?.copiados?.length ?? 0;
+        if (convertidos + copiados > 0) {
+          ui.toast(t('toast.colado', { n: convertidos + copiados }), 'ok', 2600);
+        }
 
-      // Recortar + converter: o original sai depois que a conversao deu certo.
-      if (recortarItens && convertidos > 0 && copiados === 0) {
-        await call('fs.delete', { caminhos }).catch(() => {});
+        // Recortar + converter: o original sai depois que a conversao deu certo.
+        if (recortarItens && convertidos > 0 && copiados === 0) {
+          await call('fs.delete', { caminhos }).catch(() => {});
+        }
+      } finally {
+        // Nunca deixa card pendurado, mesmo se a chamada falhar.
+        card.fechar(600);
       }
     } else if (recortarItens) {
       const card = ui.progresso({ id: opId, titulo: t('progresso.movendo', { n: caminhos.length }) });
@@ -766,7 +971,7 @@ async function iniciarBusca(termo) {
   } finally {
     if (state.busca.opId === opId) {
       state.busca.carregando = false;
-      state.busca.resultados.sort(ordenar);
+      ordenarListas();
       desenhar();
     }
   }
@@ -783,7 +988,7 @@ function sairDaBusca({ silencioso = false } = {}) {
   btnLimparBusca.hidden = true;
 
   if (estavaAtiva && !silencioso) {
-    state.itens.sort(ordenar);
+    ordenarListas();
     desenhar();
   }
 }
@@ -795,9 +1000,8 @@ function alternarVisao() {
   localStorage.setItem('cvexplorer:visao', state.visao);
   document.getElementById('btn-visualizacao').classList.toggle('ativo', state.visao === 'lista');
 
-  if (state.visao === 'grade' && cabecalhoLista) {
-    cabecalhoLista.remove();
-    cabecalhoLista = null;
+  if (state.visao === 'grade') {
+    cabecalhoEl.hidden = true;
   }
 
   area.scrollTop = 0;
@@ -819,6 +1023,12 @@ function aoTeclar(evento) {
   if (digitando) return;
 
   const ctrl = evento.ctrlKey || evento.metaKey;
+
+  if (ctrl && evento.key.toLowerCase() === 'l') {
+    evento.preventDefault();
+    entrarEdicaoEndereco();
+    return;
+  }
 
   if (ctrl && evento.key.toLowerCase() === 'c') { evento.preventDefault(); copiar(); return; }
   if (ctrl && evento.key.toLowerCase() === 'x') { evento.preventDefault(); recortar(); return; }
@@ -848,7 +1058,16 @@ function aoTeclar(evento) {
     return;
   }
 
-  if (evento.key.startsWith('Arrow')) moverSelecao(evento);
+  if (evento.key.startsWith('Arrow')) {
+    moverSelecao(evento);
+    return;
+  }
+
+  // Type-ahead: digitar vai direto para o item que combina (como no Explorer).
+  if (!ctrl && !evento.altKey && evento.key.length === 1 && evento.key !== ' ') {
+    evento.preventDefault();
+    tratarDigitacao(evento.key);
+  }
 }
 
 function moverSelecao(evento) {
@@ -895,4 +1114,126 @@ function moverSelecao(evento) {
 export function focoBusca() {
   buscaInput.focus();
   buscaInput.select();
+}
+
+// ---------- barra de endereço editável ----------
+
+function iniciarEndereco() {
+  areaEndereco.addEventListener('dblclick', (evento) => {
+    if (!evento.target.closest('.migalha')) {
+      entrarEdicaoEndereco();
+    }
+  });
+
+  entradaEndereco.addEventListener('keydown', (evento) => {
+    if (evento.key === 'Enter') {
+      evento.preventDefault();
+      irParaEndereco();
+    } else if (evento.key === 'Escape') {
+      evento.preventDefault();
+      sairEdicaoEndereco();
+    }
+  });
+
+  entradaEndereco.addEventListener('blur', sairEdicaoEndereco);
+}
+
+function entrarEdicaoEndereco() {
+  if (!state.caminho) return;
+
+  entradaEndereco.value = state.caminho;
+  entradaEndereco.hidden = false;
+  migalhas.hidden = true;
+  entradaEndereco.focus();
+
+  requestAnimationFrame(() => entradaEndereco.select());
+}
+
+function sairEdicaoEndereco() {
+  entradaEndereco.hidden = true;
+  migalhas.hidden = false;
+}
+
+async function irParaEndereco() {
+  const bruto = entradaEndereco.value.trim().replace(/^"|"$/g, '');
+  if (!bruto) {
+    sairEdicaoEndereco();
+    return;
+  }
+
+  try {
+    const stat = await call('fs.stat', { caminho: bruto });
+    if (!stat?.pasta) {
+      ui.toast(t('endereco.invalido', { caminho: bruto }), 'aviso');
+      return;
+    }
+
+    sairEdicaoEndereco();
+    await navegar(bruto);
+  } catch {
+    ui.toast(t('endereco.invalido', { caminho: bruto }), 'aviso');
+  }
+}
+
+// ---------- digitação rápida (type-ahead) ----------
+
+function normalizarTexto(texto) {
+  return (texto ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function tratarDigitacao(caractere) {
+  const agora = Date.now();
+  const novaSessao = agora - horaDigitacao > 900;
+
+  bufferDigitacao = novaSessao ? caractere : bufferDigitacao + caractere;
+  horaDigitacao = agora;
+  mostrarPillDigitacao(bufferDigitacao);
+
+  const itens = itensAtuais();
+  if (itens.length === 0) return;
+
+  const prefixo = normalizarTexto(bufferDigitacao);
+  const atual = state.ancora ?? -1;
+  // Primeira letra: avança para a próxima combinação. Refinando: mantém a atual.
+  const inicio = atual < 0 ? 0 : (novaSessao ? atual + 1 : atual);
+
+  for (let passo = 0; passo < itens.length; passo++) {
+    const indice = (inicio + passo) % itens.length;
+    const nome = normalizarTexto(itens[indice].Nome ?? itens[indice].nome);
+    if (nome.startsWith(prefixo)) {
+      selecionarIndice(indice);
+      return;
+    }
+  }
+}
+
+function mostrarPillDigitacao(texto) {
+  pillDigitacao.textContent = texto;
+  pillDigitacao.hidden = false;
+
+  clearTimeout(temporizadorDigitacao);
+  temporizadorDigitacao = setTimeout(() => {
+    pillDigitacao.hidden = true;
+    bufferDigitacao = '';
+  }, 1200);
+}
+
+function selecionarIndice(indice) {
+  const itens = itensAtuais();
+  const item = itens[indice];
+  if (!item) return;
+
+  const caminho = item.Caminho ?? item.caminho;
+  state.selecao.clear();
+  state.selecao.add(caminho);
+  state.ancora = indice;
+
+  aplicarSelecao();
+  preview.mostrar(selecionados()).catch(() => {});
+
+  area.querySelector(`[data-caminho="${CSS.escape(caminho)}"]`)
+    ?.scrollIntoView({ block: 'nearest' });
 }

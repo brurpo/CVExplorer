@@ -261,7 +261,7 @@ export function progresso({ id, titulo, subtitulo = '' }) {
   const subTexto = document.createElement('span');
   subTexto.textContent = subtitulo;
   const cancelar = document.createElement('button');
-  cancelar.className = 'mini-btn';
+  cancelar.className = 'progresso-cancelar';
   cancelar.textContent = t('progresso.cancelar');
   sub.append(subTexto, cancelar);
 

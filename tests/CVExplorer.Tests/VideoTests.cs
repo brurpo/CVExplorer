@@ -28,16 +28,61 @@ public sealed class VideoPlanTests
             TemAudio = true,
         };
 
-    [Fact]
-    public void PadraoEhProRes422Hq()
+    [Theory]
+    [InlineData(50, "prores422lt")]   // XDCAM HD422 50 Mbps, como o MXF de 1080p29.97
+    [InlineData(20, "dnxhr_lb")]
+    [InlineData(70, "prores422")]
+    [InlineData(120, "prores422hq")]
+    public void EscolhePerfilProporcionalAoBitrateDaOrigem(double mbps, string esperado)
     {
-        var plano = VideoPlanBuilder.Choose(Info(), "auto", espacoLivre: 0);
+        var info = Info();
+        info.BitrateVideoMbps = mbps;
+
+        var plano = VideoPlanBuilder.Choose(info, "auto", espacoLivre: 0);
+
+        Assert.Equal(esperado, plano.Perfil);
+    }
+
+    [Fact]
+    public void OrigemDezBitsNuncaCaiParaPerfilDe8Bits()
+    {
+        var info = Info(pixFmt: "yuv422p10le");
+        info.BitrateVideoMbps = 50;
+
+        var plano = VideoPlanBuilder.Choose(info, "auto", espacoLivre: 0);
 
         Assert.Equal("prores422hq", plano.Perfil);
-        Assert.Equal("prores_ks", plano.Encoder);
-        Assert.Equal("yuv422p10le", plano.PixFmt);
-        Assert.Equal(3, plano.ProfileValue);
-        Assert.False(plano.ComAlpha);
+        Assert.True(info.DezBits);
+    }
+
+    [Fact]
+    public void MxfXdcam50MbpsGeraArquivoMuitoMenorQueProResHq()
+    {
+        // Numeros reais de um MXF XDCAM HD422: 45 s, 1080p29.97, 50 Mbps, 8 bits 4:2:2.
+        var info = Info(fps: 30000 / 1001.0, duracao: 45.045, pixFmt: "yuv422p", codec: "mpeg2video");
+        info.BitrateVideoMbps = 50;
+
+        var automatico = VideoPlanBuilder.Choose(info, "auto", espacoLivre: 0);
+        var hq = VideoPlanBuilder.Choose(info, "prores422hq", espacoLivre: 0);
+
+        Assert.Equal("prores422lt", automatico.Perfil);
+        Assert.True(automatico.TamanhoEstimadoBytes < hq.TamanhoEstimadoBytes * 0.55,
+            "o perfil automatico deve economizar mais de 45% frente ao ProRes 422 HQ");
+
+        // E o aviso explica o motivo real do crescimento (long-GOP -> intra-frame).
+        Assert.Contains(automatico.Avisos, a => a.Contains("long-GOP"));
+    }
+
+    [Fact]
+    public void DnxHrLbFicaAbaixoDoTamanhoDoMxfOriginal()
+    {
+        var info = Info(fps: 30000 / 1001.0, duracao: 45.045, pixFmt: "yuv422p", codec: "mpeg2video");
+        info.BitrateVideoMbps = 50;
+
+        var lb = VideoPlanBuilder.Choose(info, "dnxhr_lb", espacoLivre: 0);
+
+        // O MXF tem ~339 MB; DNxHR LB deve ficar na mesma faixa ou abaixo.
+        Assert.InRange(lb.TamanhoEstimadoBytes, 150L * 1024 * 1024, 340L * 1024 * 1024);
     }
 
     [Fact]
@@ -91,14 +136,14 @@ public sealed class VideoPlanTests
     }
 
     [Fact]
-    public void SemEspacoCaiParaPerfilMenor()
+    public void SemEspacoCaiParaOPerfilMaisPequeno()
     {
-        // 1 hora de UHD em ProRes HQ passa de 350 GB; 10 GB livres nao cabe.
+        // 1 hora de UHD passa de 350 GB em qualquer perfil alto; 10 GB livres nao cabe.
         var info = Info(largura: 3840, altura: 2160, fps: 30, duracao: 3600);
 
         var plano = VideoPlanBuilder.Choose(info, "auto", espacoLivre: 10L * 1024 * 1024 * 1024);
 
-        Assert.Equal("proxy", plano.Perfil);
+        Assert.Equal("dnxhr_lb", plano.Perfil);
         Assert.Contains(plano.Avisos, a => a.Contains("insuficiente"));
     }
 

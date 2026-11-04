@@ -51,7 +51,12 @@ public static class FfmpegCommandBuilder
         else
         {
             args.Add("-profile:v");
-            args.Add(plan.Perfil == "dnxhr_hqx" ? "dnxhr_hqx" : "dnxhr_sq");
+            args.Add(plan.Perfil switch
+            {
+                "dnxhr_hqx" => "dnxhr_hqx",
+                "dnxhr_lb" => "dnxhr_lb",
+                _ => "dnxhr_sq",
+            });
             args.Add("-pix_fmt");
             args.Add(plan.PixFmt);
         }

@@ -43,9 +43,6 @@ public sealed class AppHost
 
     public IpcBridge? Bridge { get; set; }
 
-    /// <summary>Definido pela janela: mapeia uma pasta para um host virtual do WebView2.</summary>
-    public Func<string, string?>? MapearConteudo { get; set; }
-
     public AppHost()
     {
         AppPaths.EnsureCreated();

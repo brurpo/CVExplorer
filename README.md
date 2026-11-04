@@ -72,12 +72,18 @@ compila, empacota com Velopack e publica a release. O app verifica essa release 
 
 ### Explorador
 - Grade/lista com renderização virtualizada (pastas com milhares de itens continuam fluidas).
+- **Barra de endereço editável**: clique duplo no caminho (ou `Ctrl+L`) para digitar, colar ou
+  copiar um caminho; `Enter` vai para a pasta, `Esc` cancela. Clicar nas migalhas também navega.
+- **Type-ahead**: comece a digitar e a seleção pula para o item que combina (com indicador na tela).
+- **Colunas ordenáveis**: clique em *Nome*, *Tamanho* ou *Modificado* para ordenar; clique de novo
+  inverte. A escolha é lembrada.
+- **Colunas redimensionáveis**: arraste o divisor entre as colunas do cabeçalho.
 - Navegação por migalhas, histórico, teclado (`Enter`, `Backspace`, `F2`, `Delete`, setas, `Ctrl+A`).
 - Copiar / recortar / colar, arrastar do Explorer, conflitos com decisão explícita
   (*substituir / manter ambos / pular / cancelar*, com "aplicar a todos").
 - Cópia progressiva com cancelamento; nomes nunca colidem (`arquivo (2).ext`).
 - Exclusão vai para a **Lixeira**.
-- Pré-visualização lateral com imagem em tamanho real, vídeo e metadados.
+- Pré-visualização lateral com imagem em tamanho real (PSD, EXR, TIFF, SVG…), pôster de vídeo e metadados.
 
 ### Busca
 - Busca **paralela** (workers configuráveis) — pensada para latência de rede (SMB), não só disco local.
@@ -108,30 +114,47 @@ e timeout por item (handlers de shell podem travar em rede).
 Regra central: **colar vídeo não copia o original.** O arquivo é transcodificado direto na pasta
 de destino e é esse `.mov` que entra no projeto. O original permanece intacto onde estava.
 
-**Destino padrão: ProRes 422 HQ** (`prores_ks`, 10 bits, 4:2:2, `yuv422p10le`).
+### Por que o arquivo cresce (e como evitar)
 
-Por quê:
-- ProRes é **intra-frame** — cada quadro decodifica sozinho. É isso que faz o *scrub* no
-  After Effects ser rápido; H.264/H.265 são long-GOP e obrigam a decodificar cadeias inteiras.
-- AE 2024/2026 no Windows têm decodificação ProRes nativa (`ProResOpt.dll`).
-- Nenhuma GPU no Windows decodifica ProRes — e nos testes medidos a aceleração de hardware
-  no ingest não trouxe ganho (o gargalo é o encoder, que é CPU). Por isso o app **não** liga
-  flags de `-hwaccel`: seria risco sem benefício.
-- Taxas: ~99 GB/h em 1080p29,97 e ~396 GB/h em UHD. O app estima o tamanho, confere o espaço
-  livre e **rebaixa o perfil** (ProRes 422 → Proxy) quando não cabe, avisando na interface.
+ProRes é **intra-frame**: cada quadro é comprimido sozinho. MXF/H.264 de câmera são **long-GOP**:
+um quadro "cheio" a cada ~12 e os outros guardados como diferenças. É por isso que o mesmo material
+ocupa muito mais em ProRes — e é exatamente esse custo que dá *scrub* instantâneo no After Effects.
 
-Escolha automática de perfil:
+Medição real (MXF XDCAM HD422, 1080p29.97, 45 s, 50 Mbps — 322,9 MB):
 
-| Situação | Perfil |
+| Destino | Tamanho | vs MXF | vs ProRes HQ | Encode |
+|---|---|---|---|---|
+| ProRes 422 HQ (220 Mbps) | 1.206 MB | 3,7× | 100% | 25 s |
+| **ProRes 422 LT (102 Mbps)** | **591 MB** | 1,8× | **49%** | 29 s |
+| DNxHR LB (~45 Mbps) | 292 MB | **0,90×** | 24% | 12 s |
+| ProRes 422 Proxy (38 Mbps) | 282 MB | 0,87× | 23% | 21 s |
+
+Conclusão prática: para origem de ~50 Mbps em 8 bits, **ProRes 422 HQ é desperdício** — ele gasta
+4,4× mais bits para guardar exatamente a mesma informação. O app não usa mais HQ como padrão.
+
+### Escolha automática (a partir da origem)
+
+O alvo é o menor perfil intra-frame que ainda entregue **~2× o bitrate de vídeo da origem**
+(margem prática de transparência):
+
+| Origem | Perfil escolhido |
 |---|---|
-| Padrão | ProRes 422 HQ |
-| Origem com alpha, ou já 4:4:4/RGB (captura de tela, render, sequência PNG/EXR) | ProRes 4444 |
-| 12 bits / pedido explícito | DNxHR HQX |
-| Sem espaço em disco | ProRes 422 → Proxy |
+| 8 bits, ≤ ~22 Mbps | DNxHR LB |
+| 8 bits, ~22–50 Mbps (o caso do MXF) | **ProRes 422 LT** |
+| 8 bits, ~50–73 Mbps | ProRes 422 |
+| 8 bits, > ~73 Mbps | ProRes 422 HQ |
+| 10 bits, HDR, alpha ou 4:4:4/RGB | ProRes 422 HQ / ProRes 4444 |
+| Sem espaço em disco | cai para o menor perfil que cabe |
+
+O diálogo de conversão mostra o tamanho estimado de **cada** perfil e a porcentagem em relação ao
+arquivo atual, então a decisão de espaço é consciente.
 
 O app também preserva resolução, fps, **timecode**, tags de cor (primárias/transferência/matriz)
 e áudio em PCM 24 bits/48 kHz; VFR (celular/tela) passa sem duplicar quadros. Avisa — sem fingir
 que resolve — quando há **HDR10 estático** ou **Dolby Vision**: esses metadados não existem em ProRes.
+
+> Para economizar mais que o próprio MXF mantendo intra-frame, use **DNxHR LB** no diálogo
+> (ficou em 292 MB, abaixo dos 323 MB do MXF). É 8 bits, então não adicione headroom de cor.
 
 ### ffmpeg
 

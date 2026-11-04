@@ -4,6 +4,7 @@
   align-items: center;
   gap: 10px;
   padding: 0 12px;
+  min-width: 0;
   background: linear-gradient(180deg, #131417, #101113);
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
@@ -105,15 +106,47 @@
   white-space: nowrap;
 }
 
+/* Barra de endereço: clique duplo (ou Ctrl+L) transforma as migalhas em campo editável. */
+.endereco {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+}
+
+.endereco-input {
+  width: 100%;
+  height: 28px;
+  padding: 0 9px;
+  font-size: 12.5px;
+  font-family: var(--mono);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
 .migalha {
   padding: 4px 7px;
   border-radius: var(--radius-sm);
   color: var(--text-2);
   font-size: 12.5px;
-  max-width: 220px;
+  max-width: 190px;
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   transition: background var(--dur), color var(--dur);
+}
+
+/* Em janelas estreitas o rotulo "Explorer" sai de cena antes do caminho. */
+@media (max-width: 1320px) {
+  .brand-name { display: none; }
+}
+
+@media (max-width: 1150px) {
+  .chip-projeto { max-width: 150px; }
+  .search-box { flex-basis: 190px; min-width: 130px; }
 }
 
 .migalha:hover { background: var(--surface-2); color: var(--text); }
@@ -124,7 +157,8 @@
   position: relative;
   display: flex;
   align-items: center;
-  width: 280px;
+  flex: 0 1 280px;
+  min-width: 150px;
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
@@ -191,6 +225,7 @@
   display: grid;
   grid-template-columns: 246px minmax(0, 1fr) auto;
   min-height: 0;
+  min-width: 0;
 }
 
 .sidebar {
@@ -276,6 +311,8 @@
 /* ---------- conteúdo ---------- */
 .conteudo {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -283,12 +320,13 @@
 }
 
 .area-itens {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   outline: none;
-  padding: 10px 12px 24px;
+  padding: 8px 12px 24px;
 }
 
 .area-itens.arrastando::after {
@@ -370,7 +408,7 @@
   left: 12px;
   right: 12px;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) 92px 132px;
+  grid-template-columns: 20px minmax(0, 1fr) var(--w-tam, 92px) var(--w-data, 132px);
   align-items: center;
   gap: 10px;
   height: 28px;
@@ -390,24 +428,91 @@
 .row-tamanho, .row-data { color: var(--muted); font-size: 11.5px; text-align: right; }
 
 .col-cabecalho {
-  position: sticky;
-  top: -10px;
-  z-index: 2;
+  flex: 0 0 auto;
+  position: relative;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
-  margin: -10px -12px 6px;
   padding: 0 20px;
-  height: 26px;
+  height: 27px;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) 92px 132px;
+  grid-template-columns: 20px minmax(0, 1fr) var(--w-tam, 92px) var(--w-data, 132px);
   align-items: center;
   gap: 10px;
   color: var(--muted);
   font-size: 11px;
   letter-spacing: 0.3px;
+  user-select: none;
+  z-index: 2;
 }
 
-.col-cabecalho span:not(:first-child) { text-align: right; }
+.col-cabecalho .cabecalho-celula {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: right;
+  justify-content: flex-end;
+  cursor: pointer;
+  transition: color var(--dur);
+}
+
+.col-cabecalho .cabecalho-celula:hover { color: var(--text); }
+.col-cabecalho .cabecalho-celula.ordenado { color: var(--accent-strong); }
+
+.col-cabecalho .seta {
+  font-size: 9px;
+  opacity: 0.85;
+}
+
+/* alça de redimensionamento entre as colunas */
+.col-cabecalho .alca {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  width: 16px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 3;
+}
+
+body.redimensionando .col-cabecalho { border-bottom-color: var(--accent); }
+body.redimensionando { cursor: col-resize; }
+
+.col-cabecalho .alca::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--border);
+  transition: background var(--dur);
+  pointer-events: none;
+}
+
+.col-cabecalho .alca:hover::after { background: var(--accent); }
+
+/* indicador de digitação rápida (type-ahead) */
+.digitacao {
+  position: absolute;
+  left: 20px;
+  bottom: 14px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(23, 24, 27, 0.96);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 12.5px;
+  pointer-events: none;
+  z-index: 5;
+}
 
 /* vazio */
 .vazio {
@@ -588,15 +693,40 @@
 }
 
 .progresso-sub {
-  margin-top: 6px;
+  margin-top: 7px;
   font-size: 11px;
   color: var(--muted);
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
 
-.progresso-sub span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.progresso-sub span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progresso-cancelar {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1.1;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  transition: color var(--dur), background var(--dur), border-color var(--dur);
+}
+
+.progresso-cancelar:hover {
+  color: #ffb9bb;
+  background: var(--danger-dim);
+  border-color: rgba(229, 72, 77, 0.45);
+}
 
 /* ---------- menu de contexto ---------- */
 .menu-contexto {

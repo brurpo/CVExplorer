@@ -32,7 +32,10 @@
       </button>
     </div>
 
-    <nav id="migalhas" class="breadcrumb" aria-label="Caminho"></nav>
+    <div class="endereco" id="endereco-area">
+      <nav id="migalhas" class="breadcrumb" aria-label="Caminho"></nav>
+      <input id="endereco" class="endereco-input" type="text" hidden spellcheck="false" autocomplete="off" />
+    </div>
 
     <div class="search-box">
       <svg viewBox="0 0 24 24" class="search-icon"><circle cx="11" cy="11" r="7" /><path d="M16.5 16.5L21 21" /></svg>
@@ -77,7 +80,9 @@
     </aside>
 
     <main class="conteudo">
+      <div id="cabecalho-lista" class="col-cabecalho" hidden></div>
       <div id="area-itens" class="area-itens" tabindex="0"></div>
+      <div id="digitacao" class="digitacao" hidden></div>
       <div id="vazio" class="vazio" hidden>
         <div class="vazio-icone">◇</div>
         <p class="vazio-titulo" data-i18n="vazio.titulo">Pasta vazia</p>

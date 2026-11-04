@@ -22,6 +22,9 @@
       <_Parameter1>RepositorioUrl</_Parameter1>
       <_Parameter2>$(RepositorioUrl)</_Parameter2>
     </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>CVExplorer.Tests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>

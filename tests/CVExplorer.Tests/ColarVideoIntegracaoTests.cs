@@ -72,13 +72,13 @@ public sealed class ColarVideoIntegracaoTests
         // O original continua intacto onde estava.
         Assert.True(File.Exists(fonte));
 
-        // E o arquivo entregue e realmente ProRes 422 HQ.
+        // E o arquivo entregue e realmente um codec de edicao intra-frame.
         var info = await probe.InspectAsync(arquivosDestino[0], CancellationToken.None);
         Assert.NotNull(info);
-        Assert.Equal("prores", info!.Codec);
+        Assert.Contains(info!.Codec, new[] { "prores", "dnxhd" });
         Assert.Equal(1920, info.Largura);
         Assert.Equal(1080, info.Altura);
-        Assert.Contains("422p10", info.PixFmt);
+        Assert.Contains("422p", info.PixFmt);
         Assert.False(info.TemAlpha);
 
         Assert.Contains(eventos, e => e.Tipo == "convertido");

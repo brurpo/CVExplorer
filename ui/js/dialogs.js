@@ -3,7 +3,7 @@ import { t } from './i18n.js';
 import * as fmt from './format.js';
 import * as ui from './ui.js';
 
-const PERFIS = ['auto', 'prores422hq', 'prores422', 'prores4444', 'dnxhr_hqx', 'proxy'];
+const PERFIS = ['auto', 'prores422lt', 'prores422', 'prores422hq', 'prores4444', 'dnxhr_lb', 'dnxhr_hqx', 'proxy'];
 
 export function pedirTexto({ titulo, rotulo, valor = '', dica }) {
   return new Promise((resolve) => {
@@ -414,6 +414,8 @@ export async function converterVideo(item, config) {
   }
 
   const corpo = document.createElement('div');
+  const tamanhoOriginal = item.Tamanho ?? item.tamanho ?? 0;
+  const estimativas = new Map((info.estimativas ?? []).map((e) => [e.Perfil, e]));
 
   const detalhes = document.createElement('div');
   detalhes.style.display = 'grid';
@@ -421,16 +423,22 @@ export async function converterVideo(item, config) {
   detalhes.style.gap = '5px 14px';
   detalhes.style.fontSize = '12px';
   detalhes.innerHTML = `
-    <span style="color:var(--muted)">${t('video.resolucao')}</span><span style="color:var(--text-2)">${info.info.Largura} × ${info.info.Altura} · ${Number(info.info.Fps).toFixed(2)} fps</span>
+    <span style="color:var(--muted)">${t('video.resolucao')}</span><span style="color:var(--text-2)">${info.info.Largura} × ${info.info.Altura} · ${Number(info.info.Fps).toFixed(2)} fps · ${info.info.DezBits ? '10+' : '8'} bits · ${escapar(info.info.PixFmt)}</span>
     <span style="color:var(--muted)">${t('video.duracao')}</span><span style="color:var(--text-2)">${info.info.duracaoTexto}</span>
-    <span style="color:var(--muted)">${t('preview.tipo')}</span><span style="color:var(--text-2)">${escapar(info.info.Codec)} · ${escapar(info.info.PixFmt)}${info.info.TemAlpha ? ` · ${t('video.alpha')}` : ''}${info.info.Hdr ? ` · ${t('video.hdr')}` : ''}</span>
+    <span style="color:var(--muted)">${t('video.origem')}</span><span style="color:var(--text-2)">${escapar(info.info.Codec)}${info.info.BitrateVideoMbps ? ` · ${Number(info.info.BitrateVideoMbps).toFixed(0)} Mbps` : ''}${info.info.FaixasAudio > 1 ? ` · ${info.info.FaixasAudio} faixas de áudio` : ''}${info.info.TemAlpha ? ` · ${t('video.alpha')}` : ''}${info.info.Hdr ? ` · ${t('video.hdr')}` : ''}</span>
+    <span style="color:var(--muted)">${t('video.arquivoAtual')}</span><span style="color:var(--text-2)">${fmt.bytes(tamanhoOriginal)}</span>
   `;
 
   const perfil = document.createElement('select');
   for (const valor of PERFIS) {
     const opcao = document.createElement('option');
+    const tamanho = valor === 'auto'
+      ? estimativas.get(info.plano.Perfil)?.Texto
+      : estimativas.get(valor)?.Texto;
     opcao.value = valor;
-    opcao.textContent = t(`video.perfis.${valor}`);
+    opcao.textContent = tamanho
+      ? `${t(`video.perfis.${valor}`)} — ${tamanho}`
+      : t(`video.perfis.${valor}`);
     perfil.appendChild(opcao);
   }
   perfil.value = config?.PerfilVideoPadrao ?? 'auto';
@@ -447,8 +455,15 @@ export async function converterVideo(item, config) {
   const atualizarPlano = async () => {
     try {
       const resposta = await call('media.probe', { caminho, perfil: perfil.value });
-      estimativa.textContent = `${resposta.plano.NomeExibicao} · ${resposta.plano.estimadoTexto}`;
+      const diferenca = tamanhoOriginal > 0 && resposta.plano.TamanhoEstimadoBytes > 0
+        ? ` · ${Math.round((resposta.plano.TamanhoEstimadoBytes / tamanhoOriginal) * 100)}% do original`
+        : '';
+      estimativa.textContent = `${resposta.plano.NomeExibicao} · ${resposta.plano.estimadoTexto}${diferenca}`;
+
       avisos.replaceChildren();
+      if (resposta.plano.Motivo) {
+        avisos.appendChild(ui.caixaAviso(resposta.plano.Motivo, 'info'));
+      }
       for (const aviso of resposta.plano.avisos ?? []) {
         avisos.appendChild(ui.caixaAviso(aviso, 'aviso'));
       }

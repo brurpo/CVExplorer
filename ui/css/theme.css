@@ -55,6 +55,8 @@ html, body {
 
 body {
   display: grid;
+  /* Sem coluna explicita, o grid usa max-content e a interface estoura a janela. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 52px minmax(0, 1fr) 26px;
   background: var(--bg);
   color: var(--text);

@@ -98,15 +98,26 @@ public sealed class TranscodeService
         {
             while (await process.StandardOutput.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
             {
-                if (line.StartsWith("out_time_us=", StringComparison.Ordinal)
-                    && long.TryParse(line.AsSpan(11), NumberStyles.Any, CultureInfo.InvariantCulture, out var micros)
-                    && micros > 0
-                    && info.DuracaoSegundos > 0)
+                var separador = line.IndexOf('=');
+                if (separador <= 0)
                 {
-                    var percentual = Math.Clamp(micros / 1_000_000.0 / info.DuracaoSegundos * 100, 0, 100);
+                    continue;
+                }
+
+                var chave = line[..separador];
+                var valor = line[(separador + 1)..].Trim();
+
+                if (chave is "out_time_us" or "out_time_ms" or "out_time")
+                {
+                    if (!TrySegundos(chave, valor, out var segundos) || segundos <= 0 || info.DuracaoSegundos <= 0)
+                    {
+                        continue;
+                    }
+
+                    var percentual = Math.Clamp(segundos / info.DuracaoSegundos * 100, 0, 100);
 
                     // O ffmpeg emite muitas linhas: limita o trafego para a interface.
-                    if (percentual - ultimoPercentual < 0.5)
+                    if (percentual - ultimoPercentual < 0.4)
                     {
                         continue;
                     }
@@ -120,14 +131,14 @@ public sealed class TranscodeService
                         TempoDecorrido = inicio.Elapsed,
                     }).ConfigureAwait(false);
                 }
-                else if (line.StartsWith("speed=", StringComparison.Ordinal))
+                else if (chave == "speed")
                 {
                     await onProgress(new TranscodeProgress
                     {
                         OperacaoId = operacaoId,
                         Arquivo = Path.GetFileName(info.Caminho),
                         Percentual = Math.Max(ultimoPercentual, 0),
-                        Velocidade = line[6..].Trim(),
+                        Velocidade = valor,
                         TempoDecorrido = inicio.Elapsed,
                     }).ConfigureAwait(false);
                 }
@@ -167,8 +178,30 @@ public sealed class TranscodeService
         return new TranscodeResult { Ok = true, Saida = destino };
     }
 
-    private static void TryKill(Process process)
+    /// <summary>
+    /// Tempo ja processado. out_time_us e out_time_ms vem em microssegundos (peculiaridade
+    /// historica do ffmpeg); out_time vem como HH:MM:SS.ffffff.
+    /// </summary>
+    internal static bool TrySegundos(string chave, string valor, out double segundos)
     {
+        segundos = 0;
+
+        if (chave == "out_time")
+        {
+            return TimeSpan.TryParse(valor, CultureInfo.InvariantCulture, out var tempo)
+                   && (segundos = Math.Max(0, tempo.TotalSeconds)) >= 0;
+        }
+
+        if (long.TryParse(valor, NumberStyles.Any, CultureInfo.InvariantCulture, out var micros) && micros >= 0)
+        {
+            segundos = micros / 1_000_000.0;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void TryKill(Process process)    {
         try
         {
             if (!process.HasExited)

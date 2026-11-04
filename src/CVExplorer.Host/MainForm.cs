@@ -1,4 +1,4 @@
-using System.Drawing;
+﻿using System.Drawing;
 using System.Runtime.InteropServices;
 using CVExplorer.Host.Ipc;
 using Microsoft.Web.WebView2.Core;
@@ -89,36 +89,6 @@ public sealed class MainForm : Form
                 AppPaths.ThumbsVirtualHost, AppPaths.ThumbsDir, CoreWebView2HostResourceAccessKind.Allow);
 
             _host.Bridge = new IpcBridge(core, Commands.Build(_host), _host.Cancels);
-
-            var mapas = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            _host.MapearConteudo = caminho =>
-            {
-                if (string.IsNullOrWhiteSpace(caminho) || !Directory.Exists(caminho))
-                {
-                    return null;
-                }
-
-                lock (mapas)
-                {
-                    if (mapas.TryGetValue(caminho, out var existente))
-                    {
-                        return $"https://{existente}";
-                    }
-
-                    // Limite de mapeamentos para nao crescer sem controle numa sessao longa.
-                    if (mapas.Count >= 96)
-                    {
-                        mapas.Clear();
-                    }
-
-                    var nome = $"c{Guid.NewGuid():N}"[..12] + ".cvexplorer";
-                    core.SetVirtualHostNameToFolderMapping(
-                        nome, caminho, CoreWebView2HostResourceAccessKind.Allow);
-
-                    mapas[caminho] = nome;
-                    return $"https://{nome}";
-                }
-            };
 
             core.NavigationCompleted += async (_, _) =>
             {

@@ -13,6 +13,12 @@ export const state = {
   busca: { ativa: false, termo: '', opId: null, resultados: [], pastas: 0, carregando: false },
   clip: { caminhos: [], recortar: false },
   operacoes: new Map(),
+
+  /** Ordenação da lista/grade. */
+  ordenacao: { campo: 'nome', desc: false },
+
+  /** Largura das colunas redimensionáveis (px). */
+  colunas: { tamanho: 92, data: 132 },
 };
 
 const barramento = new EventTarget();

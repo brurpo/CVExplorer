@@ -1,18 +1,14 @@
 import { call } from './bridge.js';
 import { t } from './i18n.js';
 import * as fmt from './format.js';
-import { on } from './bridge.js';
+import * as thumbs from './thumbnails.js';
 
 const painel = document.getElementById('preview');
 const nomeEl = document.getElementById('preview-nome');
 const corpoEl = document.getElementById('preview-corpo');
 const metaEl = document.getElementById('preview-meta');
 
-const RENDERIZAVEIS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'];
-const REPRODUZIVEIS = ['mp4', 'webm', 'm4v', 'ogv'];
-
-let baseConteudo = null;
-let baseAtual = null;
+const IMAGENS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif', 'tif', 'tiff', 'psd', 'psb', 'exr', 'tga', 'dpx'];
 
 export function fechar() {
   painel.hidden = true;
@@ -20,16 +16,12 @@ export function fechar() {
   metaEl.replaceChildren();
 }
 
-export async function fecharSeVazio() {
-  fechar();
-}
-
 export async function mostrar(items) {
   if (items.length !== 1) {
     if (items.length > 1) {
       painel.hidden = false;
-      nomeEl.textContent = t('preview.somenteUm');
-      corpoEl.replaceChildren(placeholder(`${items.length} itens selecionados`));
+      nomeEl.textContent = `${items.length} itens`;
+      corpoEl.replaceChildren(placeholder(t('preview.somenteUm')));
       metaEl.replaceChildren();
     } else {
       fechar();
@@ -40,46 +32,86 @@ export async function mostrar(items) {
   const item = items[0];
   const caminho = item.Caminho ?? item.caminho;
   const nome = item.Nome ?? item.nome;
+  const ehPasta = item.Pasta ?? item.pasta;
   const ext = fmt.extensao(nome);
-  const cat = (item.Pasta ?? item.pasta) ? 'pasta' : fmt.categoria(ext);
 
   painel.hidden = false;
   nomeEl.textContent = nome;
+  nomeEl.title = caminho;
   corpoEl.replaceChildren();
   metaEl.replaceChildren();
 
-  if (cat === 'pasta') {
+  if (ehPasta) {
     corpoEl.appendChild(placeholder(t('preview.selecione')));
     return;
   }
 
-  if (RENDERIZAVEIS.includes(ext) || REPRODUZIVEIS.includes(ext)) {
-    const base = await garantirBase(caminho);
-    if (base) {
-      const url = `${base}/${encodeURIComponent(nome)}`;
-      if (REPRODUZIVEIS.includes(ext)) {
-        const video = document.createElement('video');
-        video.src = url;
-        video.controls = true;
-        video.preload = 'metadata';
-        corpoEl.appendChild(video);
-      } else {
-        const img = document.createElement('img');
-        img.src = url;
-        img.alt = nome;
-        img.onerror = () => {
-          corpoEl.replaceChildren(placeholder(t('preview.semPreview')));
-        };
-        corpoEl.appendChild(img);
-      }
-    } else {
-      corpoEl.appendChild(placeholder(t('preview.semPreview')));
-    }
+  const carregando = document.createElement('div');
+  carregando.className = 'spinner';
+  corpoEl.appendChild(carregando);
+
+  if (IMAGENS.includes(ext)) {
+    await mostrarImagem(caminho, nome);
+  } else if (fmt.ehVideo(nome)) {
+    await mostrarVideo(item, caminho, nome);
   } else {
-    corpoEl.appendChild(placeholder(t('preview.semPreview')));
+    corpoEl.replaceChildren(placeholder(t('preview.semPreview')));
   }
 
   await preencherMeta(item, caminho, ext);
+}
+
+async function mostrarImagem(caminho, nome) {
+  try {
+    // O host devolve bytes já redimensionados: funciona com PSD, EXR, TIFF, SVG...
+    const resposta = await call('fs.preview', { caminho, max: 1800 });
+    if (!resposta?.dados) {
+      corpoEl.replaceChildren(placeholder(t('preview.semPreview')));
+      return;
+    }
+
+    const img = document.createElement('img');
+    img.src = `data:${resposta.mime};base64,${resposta.dados}`;
+    img.alt = nome;
+    corpoEl.replaceChildren(img);
+  } catch {
+    corpoEl.replaceChildren(placeholder(t('preview.semPreview')));
+  }
+}
+
+async function mostrarVideo(item, caminho, nome) {
+  // O poster vem da mesma cadeia de miniaturas (rápida e normalmente já em cache).
+  const emCache = thumbs.emCache(item);
+  const aplicar = (url) => {
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = nome;
+    corpoEl.replaceChildren(img);
+  };
+
+  if (emCache) {
+    aplicar(emCache);
+  } else {
+    thumbs.solicitar(item, 512, (url) => {
+      if (!painel.hidden) aplicar(url);
+    });
+  }
+
+  const abrir = document.createElement('button');
+  abrir.className = 'btn';
+  abrir.textContent = t('preview.abrirPlayer');
+  abrir.style.marginTop = '10px';
+  abrir.addEventListener('click', () => call('fs.open', { caminho }).catch(() => {}));
+
+  const rodapePreview = document.createElement('div');
+  rodapePreview.style.display = 'flex';
+  rodapePreview.style.flexDirection = 'column';
+  rodapePreview.style.alignItems = 'center';
+  rodapePreview.append(abrir);
+
+  setTimeout(() => {
+    if (!painel.hidden) corpoEl.appendChild(rodapePreview);
+  }, 0);
 }
 
 function placeholder(texto) {
@@ -87,20 +119,6 @@ function placeholder(texto) {
   el.className = 'placeholder';
   el.textContent = texto;
   return el;
-}
-
-async function garantirBase(caminho) {
-  const pasta = fmt.pastaDe(caminho);
-  if (baseConteudo && baseAtual === pasta) return baseConteudo;
-
-  try {
-    const resposta = await call('fs.map', { caminho: pasta });
-    baseConteudo = resposta?.urlBase ?? null;
-    baseAtual = pasta;
-    return baseConteudo;
-  } catch {
-    return null;
-  }
 }
 
 async function preencherMeta(item, caminho, ext) {
@@ -114,7 +132,6 @@ async function preencherMeta(item, caminho, ext) {
 
   linhas.push([t('preview.modificado'), fmt.data(modificado)]);
   linhas.push([t('preview.tipo'), ext ? ext.toUpperCase() : '—']);
-  linhas.push([t('preview.caminho'), caminho]);
 
   if (fmt.ehVideo(caminho)) {
     try {
@@ -122,12 +139,16 @@ async function preencherMeta(item, caminho, ext) {
       if (info?.info) {
         linhas.splice(1, 0, [t('preview.dimensoes'), `${info.info.Largura} × ${info.info.Altura}`]);
         linhas.splice(2, 0, [t('preview.duracao'), fmt.duracao(info.info.DuracaoSegundos)]);
-        if (info.info.TemAlpha) linhas.push([t('video.alpha'), '—']);
+        if (info.info.BitrateVideoMbps) {
+          linhas.splice(3, 0, [t('preview.bitrate'), `${Number(info.info.BitrateVideoMbps).toFixed(0)} Mbps`]);
+        }
       }
     } catch {
-      // sem ffprobe: mostra o que ja temos
+      // sem ffprobe: mostra o que já temos
     }
   }
+
+  linhas.push([t('preview.caminho'), caminho]);
 
   for (const [rotulo, valor] of linhas) {
     const linha = document.createElement('div');
@@ -143,5 +164,4 @@ async function preencherMeta(item, caminho, ext) {
 
 export function iniciarPreview() {
   document.getElementById('preview-fechar').addEventListener('click', fechar);
-  on('preview.atualizar', (items) => mostrar(items ?? []));
 }

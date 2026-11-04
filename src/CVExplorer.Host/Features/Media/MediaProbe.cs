@@ -26,6 +26,23 @@ public sealed class MediaInfo
 
     public int AudioCanais { get; set; } = 2;
 
+    /// <summary>Quantidade de faixas de audio (ISO tracks de camera podem ser 8+).</summary>
+    public int FaixasAudio { get; set; }
+
+    /// <summary>Bitrate de video da origem em Mbps (0 quando o container nao informa).</summary>
+    public double BitrateVideoMbps { get; set; }
+
+    /// <summary>Bits por amostra informados pelo container (0 quando desconhecido).</summary>
+    public int BitsPorAmostra { get; set; }
+
+    /// <summary>Origem com 10 bits ou mais por amostra.</summary>
+    public bool DezBits =>
+        BitsPorAmostra >= 10
+        || PixFmt.Contains("p10", StringComparison.OrdinalIgnoreCase)
+        || PixFmt.Contains("p12", StringComparison.OrdinalIgnoreCase)
+        || PixFmt.Contains("p16", StringComparison.OrdinalIgnoreCase)
+        || PixFmt.Contains("p010", StringComparison.OrdinalIgnoreCase);
+
     public string? Primarias { get; set; }
 
     public string? Transferencia { get; set; }
@@ -109,6 +126,7 @@ public sealed class MediaProbe
             JsonElement? video = null;
             var temAudio = false;
             var canais = 2;
+            var faixasAudio = 0;
 
             if (root.TryGetProperty("streams", out var streams))
             {
@@ -122,6 +140,7 @@ public sealed class MediaProbe
                     else if (type == "audio")
                     {
                         temAudio = true;
+                        faixasAudio++;
                         if (stream.TryGetProperty("channels", out var ch) && ch.TryGetInt32(out var v))
                         {
                             canais = Math.Max(canais, v);
@@ -140,6 +159,7 @@ public sealed class MediaProbe
                 Caminho = caminho,
                 TemAudio = temAudio,
                 AudioCanais = canais,
+                FaixasAudio = faixasAudio,
                 Largura = GetInt(video.Value, "width"),
                 Altura = GetInt(video.Value, "height"),
                 PixFmt = GetString(video.Value, "pix_fmt") ?? string.Empty,
@@ -150,6 +170,9 @@ public sealed class MediaProbe
                 FaixaCor = GetString(video.Value, "color_range"),
                 Timecode = GetTag(video.Value, "timecode"),
             };
+
+            info.BitrateVideoMbps = ParseMbps(GetString(video.Value, "bit_rate"));
+            info.BitsPorAmostra = GetInt(video.Value, "bits_per_raw_sample");
 
             info.Fps = ParseRate(GetString(video.Value, "avg_frame_rate"));
             var rFps = ParseRate(GetString(video.Value, "r_frame_rate"));
@@ -194,8 +217,39 @@ public sealed class MediaProbe
             ? v.GetString()
             : null;
 
-    private static int GetInt(JsonElement el, string name) =>
-        el.TryGetProperty(name, out var v) && v.TryGetInt32(out var i) ? i : 0;
+    private static int GetInt(JsonElement el, string name)
+    {
+        if (!el.TryGetProperty(name, out var v))
+        {
+            return 0;
+        }
+
+        // O ffprobe mistura numeros e strings no mesmo JSON (ex.: "bits_per_raw_sample": "8").
+        if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var numero))
+        {
+            return numero;
+        }
+
+        if (v.ValueKind == JsonValueKind.String
+            && int.TryParse(v.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var texto))
+        {
+            return texto;
+        }
+
+        return 0;
+    }
+
+    private static double ParseMbps(string? bitRate)
+    {
+        if (string.IsNullOrWhiteSpace(bitRate)
+            || !long.TryParse(bitRate, NumberStyles.Any, CultureInfo.InvariantCulture, out var bps)
+            || bps <= 0)
+        {
+            return 0;
+        }
+
+        return bps / 1_000_000.0;
+    }
 
     private static double ParseRate(string? rate)
     {

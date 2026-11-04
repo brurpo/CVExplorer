@@ -124,12 +124,11 @@ public static class Commands
             return Task.FromResult<object?>(new { caminho = ok ? dialogo.SelectedPath : null });
         });
 
-        // Mapeia a pasta atual num host virtual do WebView2: a pre-visualizacao
-        // consegue carregar imagem/video em tamanho real direto do disco.
-        Add("fs.map", (args, _) =>
+        // Pre-visualizacao entregue como bytes (base64): nao depende de host virtual.
+        Add("fs.preview", (args, _) =>
         {
-            var baseUrl = host.MapearConteudo?.Invoke(Str(args, "caminho"));
-            return Task.FromResult<object?>(new { urlBase = baseUrl });
+            var (mime, dados) = PreviewRenderer.Render(Str(args, "caminho"), Int(args, "max", 1600));
+            return Task.FromResult<object?>(new { mime, dados });
         });
 
         Add("fs.reveal", (args, _) =>
@@ -418,10 +417,13 @@ public static class Commands
                     info.PixFmt,
                     info.TemAlpha,
                     info.TemAudio,
+                    info.FaixasAudio,
                     info.DuracaoSegundos,
                     info.Hdr,
                     info.DolbyVision,
                     info.Vfr,
+                    info.DezBits,
+                    info.BitrateVideoMbps,
                     duracaoTexto = TimeSpan.FromSeconds(info.DuracaoSegundos).ToString(@"hh\:mm\:ss"),
                 },
                 plano = new
@@ -430,10 +432,14 @@ public static class Commands
                     plano.NomeExibicao,
                     plano.PixFmt,
                     plano.ComAlpha,
+                    plano.OrigemMbps,
+                    plano.AlvoMbps,
+                    plano.Motivo,
                     plano.TamanhoEstimadoBytes,
                     estimadoTexto = VideoPlanBuilder.FormatBytes(plano.TamanhoEstimadoBytes),
                     avisos = plano.Avisos,
                 },
+                estimativas = VideoPlanBuilder.Estimates(info),
             };
         }, operacao: true);
 

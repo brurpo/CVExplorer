@@ -14,6 +14,7 @@ public sealed class IpcBridge
     private readonly CoreWebView2 _web;
     private readonly Dictionary<string, Route> _routes;
     private readonly CancellationRegistry _cancellations;
+    private readonly SynchronizationContext _ui;
 
     public sealed record Route(Func<JsonElement, CancellationToken, Task<object?>> Handler, bool UsaOperacao);
 
@@ -25,19 +26,36 @@ public sealed class IpcBridge
         _web = web;
         _routes = routes;
         _cancellations = cancellations;
+        // Capturado na criacao (thread da UI): eventos vindos do ffmpeg/copia
+        // precisam ser publicados aqui, senao o WebView2 recusa a mensagem.
+        _ui = SynchronizationContext.Current ?? new SynchronizationContext();
         _web.WebMessageReceived += OnMessageReceived;
     }
 
     public void Emit(string evt, object? data)
     {
+        string payload;
         try
         {
-            _web.PostWebMessageAsJson(JsonSerializer.Serialize(new { evt, data }, Json.Compact));
+            payload = JsonSerializer.Serialize(new { evt, data }, Json.Compact);
         }
         catch (Exception ex)
         {
-            Log.Error($"Falha ao emitir evento {evt}", ex);
+            Log.Error($"Falha ao serializar evento {evt}", ex);
+            return;
         }
+
+        _ui.Post(_ =>
+        {
+            try
+            {
+                _web.PostWebMessageAsJson(payload);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"Falha ao emitir evento {evt}", ex);
+            }
+        }, null);
     }
 
     private async void OnMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
