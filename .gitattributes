@@ -1,0 +1,2 @@
+# Patches precisam ficar em LF: CRLF quebra a aplicacao com o GNU patch.
+vendor/ffmpeg/*.patch text eol=lf
