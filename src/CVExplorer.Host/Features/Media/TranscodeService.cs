@@ -38,9 +38,72 @@ public sealed class TranscodeService
 
     public TranscodeService(FfmpegLocator locator) => _locator = locator;
 
-    public async Task<TranscodeResult> ConvertAsync(
+    public Task<TranscodeResult> ConvertAsync(
         MediaInfo info,
         VideoPlan plan,
+        string pastaDestino,
+        string operacaoId,
+        Func<TranscodeProgress, Task> onProgress,
+        CancellationToken ct) =>
+        ExecutarAsync(
+            info,
+            plan,
+            info.Caminho,
+            null,
+            Path.GetFileNameWithoutExtension(info.Caminho),
+            pastaDestino,
+            operacaoId,
+            onProgress,
+            ct);
+
+    /// <summary>
+    /// Sequencia de imagens -> um unico video. A lista do demuxer concat e temporaria
+    /// e morre junto com a conversao (nada e gravado na pasta do projeto).
+    /// </summary>
+    public async Task<TranscodeResult> ConvertSequenceAsync(
+        MediaInfo info,
+        ImageSequence sequencia,
+        VideoPlan plan,
+        int fps,
+        string pastaDestino,
+        string operacaoId,
+        Func<TranscodeProgress, Task> onProgress,
+        CancellationToken ct)
+    {
+        var lista = Path.Combine(Path.GetTempPath(), $"cvexplorer-seq-{Guid.NewGuid():N}.txt");
+
+        try
+        {
+            await File.WriteAllTextAsync(
+                    lista,
+                    sequencia.MontarListaConcat(fps),
+                    new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                    ct)
+                .ConfigureAwait(false);
+
+            return await ExecutarAsync(
+                info,
+                plan,
+                lista,
+                new FfmpegCommandBuilder.EntradaSequencia(fps),
+                sequencia.NomeBase,
+                pastaDestino,
+                operacaoId,
+                onProgress,
+                ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            TryDelete(lista);
+        }
+    }
+
+    private async Task<TranscodeResult> ExecutarAsync(
+        MediaInfo info,
+        VideoPlan plan,
+        string entrada,
+        FfmpegCommandBuilder.EntradaSequencia? sequencia,
+        string nomeBase,
         string pastaDestino,
         string operacaoId,
         Func<TranscodeProgress, Task> onProgress,
@@ -61,15 +124,20 @@ public sealed class TranscodeService
             return new TranscodeResult { Ok = false, Erro = $"Pasta de destino inexistente: {pastaDestino}" };
         }
 
-        var baseNome = Path.GetFileNameWithoutExtension(info.Caminho);
         var destino = Features.FileSystem.FileOperations.UniquePath(
-            Path.Combine(pastaDestino, baseNome + plan.Container),
+            Path.Combine(pastaDestino, nomeBase + plan.Container),
             plan.Container,
             isDirectory: false);
 
         var parcial = Path.Combine(
             Path.GetDirectoryName(destino)!,
-            Path.GetFileNameWithoutExtension(destino) + ".partial.mov");
+            Path.GetFileNameWithoutExtension(destino) + ".partial" + plan.Container);
+
+        // H.264 depende de qual encoder este ffmpeg tem (libx264, NVENC, MF...).
+        if (plan.Encoder == "h264")
+        {
+            plan.Encoder = H264Picker.Escolher(ffmpeg) ?? "h264";
+        }
 
         var psi = new ProcessStartInfo(ffmpeg)
         {
@@ -79,7 +147,7 @@ public sealed class TranscodeService
             CreateNoWindow = true,
         };
 
-        foreach (var arg in FfmpegCommandBuilder.Build(info, plan, info.Caminho, parcial))
+        foreach (var arg in FfmpegCommandBuilder.Build(info, plan, entrada, parcial, sequencia))
         {
             psi.ArgumentList.Add(arg);
         }

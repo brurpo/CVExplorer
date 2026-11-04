@@ -70,6 +70,13 @@ export function ehVideo(nomeOuExt) {
   return CATEGORIAS.video.includes(ext);
 }
 
+/** Extensões que podem formar sequência (as mesmas do host, em ImageSequence.cs). */
+export const EXTENSOES_SEQUENCIA = ['png', 'jpg', 'jpeg', 'tif', 'tiff', 'exr', 'dpx', 'tga', 'bmp', 'hdr'];
+
+export function podeSerSequencia(nome) {
+  return EXTENSOES_SEQUENCIA.includes(extensao(nome));
+}
+
 export function nomearArquivo(caminho) {
   const partes = caminho.split(/[\\/]/);
   return partes[partes.length - 1] || caminho;

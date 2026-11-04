@@ -18,6 +18,9 @@ public sealed class VideoPlan
 
     public string Container { get; set; } = ".mov";
 
+    /// <summary>pcm24 | pcm16 | aac</summary>
+    public string Audio { get; set; } = "pcm24";
+
     public long TamanhoEstimadoBytes { get; set; }
 
     /// <summary>Bitrate de video da origem em Mbps (0 = desconhecido).</summary>
@@ -58,8 +61,16 @@ public static class VideoPlanBuilder
         string PixFmt,
         int Profile,
         int Mbps1080p30,
-        string Descricao);
+        string Descricao,
+        string Container = ".mov",
+        string Audio = "pcm24",
+        bool Fixo = false);
 
+    /// <summary>
+    /// Escada usada pela escolha automatica e pelo ajuste de espaco. Só perfis de
+    /// edicao entram aqui: os presets "de entrega" (MXF, XDCAM, H.264, DXV3) são
+    /// escolhidos à mão no menu de contexto e não podem ser auto-selecionados.
+    /// </summary>
     private static readonly (string Chave, PerfilInfo Info)[] Ordem =
     {
         ("proxy", new PerfilInfo("ProRes 422 Proxy", "prores_ks", "yuv422p10le", 0, 38, "leve, para offline")),
@@ -67,24 +78,45 @@ public static class VideoPlanBuilder
         ("prores422lt", new PerfilInfo("ProRes 422 LT", "prores_ks", "yuv422p10le", 1, 102, "transparente para origens de ate ~50 Mbps")),
         ("prores422", new PerfilInfo("ProRes 422", "prores_ks", "yuv422p10le", 2, 147, "transparente para origens de ate ~75 Mbps")),
         ("prores422hq", new PerfilInfo("ProRes 422 HQ", "prores_ks", "yuv422p10le", 3, 220, "para origens de alto bitrate ou 10 bits")),
-        ("prores4444", new PerfilInfo("ProRes 4444", "prores_ks", "yuv444p10le", 4, 330, "4:4:4 e alpha")),
+        ("prores4444", new PerfilInfo("ProRes 4444", "prores_ks", "yuva444p10le", 4, 330, "4:4:4 e alpha")),
         ("dnxhr_hqx", new PerfilInfo("DNxHR HQX", "dnxhd", "yuv422p10le", 0, 220, "12 bits, fluxo Avid")),
         ("dnxhr_sq", new PerfilInfo("DNxHR SQ", "dnxhd", "yuv422p", 0, 145, "8 bits, decodificacao muito rapida")),
     };
 
+    /// <summary>Presets de conversao manual (menu de contexto): codec + container + audio.</summary>
+    private static readonly (string Chave, PerfilInfo Info)[] Extras =
+    {
+        ("prores422_mov", new PerfilInfo("ProRes 422 — .mov", "prores_ks", "yuv422p10le", 2, 147, "entrega em QuickTime")),
+        ("prores4444_mov", new PerfilInfo("ProRes 4444 (alpha) — .mov", "prores_ks", "yuva444p10le", 4, 330, "canal alpha preservado")),
+        ("dnxhr_sq_mov", new PerfilInfo("DNxHR SQ — .mov", "dnxhd", "yuv422p", 0, 138, "Avid/fluxo Windows")),
+        ("dnxhr_hq_mov", new PerfilInfo("DNxHR HQ — .mov", "dnxhd", "yuv422p", 0, 208, "8 bits de alta qualidade")),
+        ("dnxhr_sq_mxf", new PerfilInfo("DNxHR SQ — .mxf", "dnxhd", "yuv422p", 0, 138, "MXF OP1a para Avid", ".mxf")),
+        ("dnxhr_hq_mxf", new PerfilInfo("DNxHR HQ — .mxf", "dnxhd", "yuv422p", 0, 208, "MXF OP1a para Avid", ".mxf")),
+        ("xdcam", new PerfilInfo("XDCAM HD422 50 Mbps — .mxf", "mpeg2video", "yuv422p", 0, 50, "padrão de emissora", ".mxf", "pcm24", Fixo: true)),
+        ("dxv3", new PerfilInfo("DXV3 — .mov", "dxv", "rgba", 0, 185, "Resolume, playback em tempo real", ".mov", "pcm16")),
+        ("h264", new PerfilInfo("H.264 — .mp4", "h264", "yuv420p", 0, 20, "entrega/aprovação", ".mp4", "aac")),
+    };
+
+    private static IEnumerable<(string Chave, PerfilInfo Info)> Todos => Ordem.Concat(Extras);
+
     public const long MargemSegurancaBytes = 1L * 1024 * 1024 * 1024;
 
     private static PerfilInfo Get(string chave) =>
-        Ordem.First(p => p.Chave.Equals(chave, StringComparison.OrdinalIgnoreCase)).Info;
+        Todos.First(p => p.Chave.Equals(chave, StringComparison.OrdinalIgnoreCase)).Info;
 
     public static bool Existe(string? chave) =>
         !string.IsNullOrWhiteSpace(chave)
-        && Ordem.Any(p => p.Chave.Equals(chave, StringComparison.OrdinalIgnoreCase));
+        && Todos.Any(p => p.Chave.Equals(chave, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Presets de conversao manual, para o menu de contexto.</summary>
+    public static IReadOnlyList<(string Chave, string Nome, string Container)> Presets() =>
+        Extras.Select(p => (p.Chave, p.Info.Nome, p.Info.Container)).ToList();
 
     public static VideoPlan Choose(MediaInfo info, string? perfilSolicitado, long espacoLivre)
     {
         var pedido = (perfilSolicitado ?? "auto").Trim().ToLowerInvariant();
-        var chave = Existe(pedido) && pedido != "auto" ? pedido : EscolherAutomatico(info);
+        var explicito = Existe(pedido) && pedido != "auto";
+        var chave = explicito ? pedido : EscolherAutomatico(info);
         var perfil = Get(chave);
 
         var plano = new VideoPlan
@@ -94,13 +126,19 @@ public static class VideoPlanBuilder
             Encoder = perfil.Encoder,
             ProfileValue = perfil.Profile,
             PixFmt = perfil.PixFmt,
+            Container = perfil.Container,
+            Audio = perfil.Audio,
             OrigemMbps = info.BitrateVideoMbps,
-            AlvoMbps = perfil.Mbps1080p30 * FatorResolucao(info) * FatorFps(info),
+            AlvoMbps = Alvo(perfil, info),
         };
 
-        // Alpha nao existe em 4:2:2: nesse caso 4444 nunca e opcional.
-        plano.ComAlpha = info.TemAlpha;
-        if (info.TemAlpha)
+        // Alpha nao existe em 4:2:2. Perfil de EDICAO nunca desiste do alpha: sobe para 4444.
+        // Ja um preset manual (menu "Converter para", ex. H.264) e escolha explicita de entrega
+        // e deve ser respeitado — nesse caso o alpha e descartado com aviso.
+        var ehPresetManual = Extras.Any(p => p.Chave.Equals(chave, StringComparison.OrdinalIgnoreCase));
+        plano.ComAlpha = perfil.PixFmt.StartsWith("yuva", StringComparison.Ordinal);
+
+        if (info.TemAlpha && !ehPresetManual)
         {
             var p4444 = Get("prores4444");
             chave = "prores4444";
@@ -109,18 +147,41 @@ public static class VideoPlanBuilder
             plano.Encoder = p4444.Encoder;
             plano.ProfileValue = p4444.Profile;
             plano.PixFmt = "yuva444p10le";
-            plano.AlvoMbps = p4444.Mbps1080p30 * FatorResolucao(info) * FatorFps(info);
+            plano.Container = p4444.Container;
+            plano.Audio = p4444.Audio;
+            plano.ComAlpha = true;
+            plano.AlvoMbps = Alvo(p4444, info);
             plano.Motivo = "A origem tem canal alpha; so ProRes 4444 preserva transparencia.";
         }
+        else if (info.TemAlpha && ehPresetManual && !plano.ComAlpha)
+        {
+            plano.Avisos.Add(
+                $"{perfil.Nome} não guarda canal alpha: a transparência da origem será descartada. "
+                + "Use ProRes 4444 se precisar manter.");
+        }
+        else if (!info.TemAlpha && !ehPresetManual && plano.ComAlpha)
+        {
+            // 4:4:4 sem alpha: o quarto canal so pesaria ~25% a mais no arquivo.
+            plano.PixFmt = plano.PixFmt.Replace("yuva", "yuv", StringComparison.Ordinal);
+            plano.ComAlpha = false;
+        }
 
-        plano.TamanhoEstimadoBytes = Estimate(perfil.Mbps1080p30, info);
+        // Estimativa do perfil que realmente vai ser usado (o alpha pode ter trocado o perfil).
+        plano.TamanhoEstimadoBytes = Estimate(Get(plano.Perfil), info);
 
         if (plano.Motivo is null)
         {
-            plano.Motivo = ExplicarEscolha(info, chave, perfil);
+            plano.Motivo = explicito
+                ? $"Preset escolhido à mão — {perfil.Descricao}."
+                : ExplicarEscolha(info, chave, perfil);
         }
 
-        AjustarPorEspaco(plano, info, espacoLivre);
+        // Perfil escolhido a mao nao e trocado por espaco: o usuario pediu aquele formato.
+        if (!explicito)
+        {
+            AjustarPorEspaco(plano, info, espacoLivre);
+        }
+
         AdicionarAvisos(plano, info);
         return plano;
     }
@@ -182,7 +243,13 @@ public static class VideoPlanBuilder
         var original = plano.NomeExibicao;
         foreach (var (chave, perfil) in Ordem)
         {
-            var estimado = Estimate(perfil.Mbps1080p30, info);
+            // Nunca desce para um perfil sem alpha quando a origem tem transparencia.
+            if (plano.ComAlpha && !perfil.PixFmt.StartsWith("yuva", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var estimado = Estimate(perfil, info);
             if (estimado + MargemSegurancaBytes > espacoLivre)
             {
                 continue;
@@ -192,7 +259,10 @@ public static class VideoPlanBuilder
             plano.NomeExibicao = perfil.Nome;
             plano.Encoder = perfil.Encoder;
             plano.ProfileValue = perfil.Profile;
-            plano.PixFmt = plano.ComAlpha && chave == "prores4444" ? "yuva444p10le" : perfil.PixFmt;
+            plano.PixFmt = perfil.PixFmt;
+            plano.ComAlpha = plano.PixFmt.StartsWith("yuva", StringComparison.Ordinal);
+            plano.Container = perfil.Container;
+            plano.Audio = perfil.Audio;
             plano.TamanhoEstimadoBytes = estimado;
             plano.Avisos.Add($"Espaco insuficiente para {original}. Usando {perfil.Nome}.");
             return;
@@ -203,7 +273,10 @@ public static class VideoPlanBuilder
         plano.NomeExibicao = piso.Nome;
         plano.Encoder = piso.Encoder;
         plano.PixFmt = piso.PixFmt;
-        plano.TamanhoEstimadoBytes = Estimate(piso.Mbps1080p30, info);
+        plano.ComAlpha = false;
+        plano.Container = piso.Container;
+        plano.Audio = piso.Audio;
+        plano.TamanhoEstimadoBytes = Estimate(piso, info);
         plano.Avisos.Add(
             $"Espaco livre insuficiente (~{FormatBytes(espacoLivre)}). Libere espaco antes de converter.");
     }
@@ -211,7 +284,9 @@ public static class VideoPlanBuilder
     private static void AdicionarAvisos(VideoPlan plano, MediaInfo info)
     {
         // Deixa explicito por que o arquivo cresce: e o preco do intra-frame.
-        if (info.BitrateVideoMbps > 0 && plano.AlvoMbps > info.BitrateVideoMbps * 1.5)
+        // Formato de entrega long-GOP (XDCAM, H.264) nao ganha esse aviso: ele nao e intra-frame.
+        var intraFrame = plano.Encoder is "prores_ks" or "dnxhd" or "dxv";
+        if (intraFrame && info.BitrateVideoMbps > 0 && plano.AlvoMbps > info.BitrateVideoMbps * 1.5)
         {
             var fator = plano.AlvoMbps / info.BitrateVideoMbps;
             plano.Avisos.Add(
@@ -244,29 +319,35 @@ public static class VideoPlanBuilder
 
     /// <summary>Tamanho estimado de cada perfil, para a interface mostrar a conta antes de converter.</summary>
     public static List<VideoEstimate> Estimates(MediaInfo info) =>
-        Ordem.Select(p => new VideoEstimate
+        Todos.Select(p => new VideoEstimate
         {
             Perfil = p.Chave,
             Nome = p.Info.Nome,
-            Bytes = Estimate(p.Info.Mbps1080p30, info),
-            Texto = FormatBytes(Estimate(p.Info.Mbps1080p30, info)),
+            Bytes = Estimate(p.Info, info),
+            Texto = FormatBytes(Estimate(p.Info, info)),
         }).ToList();
 
-    public static long Estimate(int mbps1080p30, MediaInfo info)
+    private static long Estimate(PerfilInfo perfil, MediaInfo info) =>
+        Estimate(perfil.Mbps1080p30, info, perfil.Fixo);
+
+    public static long Estimate(int mbps1080p30, MediaInfo info, bool fixo = false)
     {
         if (info.DuracaoSegundos <= 0)
         {
             return 0;
         }
 
-        var videoMbps = mbps1080p30 * FatorResolucao(info) * FatorFps(info);
+        // Preset com bitrate fechado (XDCAM CBR) nao acompanha resolucao nem fps.
+        var videoMbps = fixo ? mbps1080p30 : mbps1080p30 * FatorResolucao(info) * FatorFps(info);
         var audioMbps = info.TemAudio ? Math.Max(1.152 * Math.Max(1, info.AudioCanais), 1.152) : 0;
 
         return (long)(info.DuracaoSegundos * (videoMbps + audioMbps) * 1_000_000 / 8);
     }
 
-    private static double FatorResolucao(MediaInfo info)
-    {
+    private static double Alvo(PerfilInfo perfil, MediaInfo info) =>
+        perfil.Fixo ? perfil.Mbps1080p30 : perfil.Mbps1080p30 * FatorResolucao(info) * FatorFps(info);
+
+    private static double FatorResolucao(MediaInfo info)    {
         var pixels = Math.Max(info.Largura * info.Altura, 1);
         return pixels / (1920.0 * 1080.0);
     }

@@ -237,6 +237,45 @@ O diálogo de conversão mostra o tamanho estimado de **cada** perfil e a porcen
 arquivo atual, então a decisão de espaço é consciente. Perfis disponíveis: `Automático`,
 `ProRes 422 Proxy/LT/422/HQ/4444` e `DNxHR LB/SQ/HQX`.
 
+### Conversão manual (menu de contexto)
+
+Clique com o botão direito em um vídeo → **Converter para ▸** e escolha o formato exato. Cada preset
+define codec, container e áudio:
+
+| Grupo | Preset | Codec | Container | Áudio |
+|---|---|---|---|---|
+| MOV | ProRes 422 | `prores_ks -profile:v 2` | `.mov` | PCM 24 bits |
+| MOV | ProRes 4444 (alpha) | `prores_ks -profile:v 4 -alpha_bits 16` | `.mov` | PCM 24 bits |
+| MOV | DNxHR SQ | `dnxhd -profile:v dnxhr_sq` | `.mov` | PCM 24 bits |
+| MOV | DNxHR HQ | `dnxhd -profile:v dnxhr_hq` | `.mov` | PCM 24 bits |
+| MOV | DXV3 | `dxv -pix_fmt rgba` | `.mov` | PCM 16 bits |
+| MXF | DNxHR SQ / HQ | `dnxhd` | `.mxf` (OP1a) | PCM 24 bits |
+| MXF | XDCAM HD422 50 Mbps | `mpeg2video` CBR 50 Mbps, 4:2:2 | `.mxf` (OP1a) | PCM 24 bits |
+| MP4 | H.264 | encoder H.264 disponível, ~20 Mbps | `.mp4` | AAC 320 kbps |
+
+Detalhes que valem registro: `.mxf` recebe `-f mxf` e **não** recebe `-movflags`; XDCAM usa
+`-b:v/-minrate/-maxrate 50M` com `-bufsize 17825792 -g 12 -bf 2` (é o que emissora espera, e o
+bitrate é fixo — não acompanha resolução); DXV3 aceita só `dxt1` neste ffmpeg, ou seja, **sem alpha**;
+H.264 resolve o encoder em tempo de execução (`libx264` → `h264_nvenc` → `h264_qsv` → `h264_amf` →
+`h264_mf` → `libopenh264`). Preset escolhido à mão nunca é trocado por falta de espaço — a escolha é
+do usuário; só o automático se ajusta. Se a origem tem alpha e o preset não guarda (H.264, DNxHR,
+XDCAM, DXV3), o diálogo avisa que a transparência será descartada.
+
+### Sequência de imagens
+
+Botão direito em qualquer quadro de uma sequência (PNG, JPG, TIF, EXR, DPX, TGA, BMP, HDR) →
+**Converter sequência (N quadros)…**. O app reconhece os irmãos por *prefixo + numeração + extensão*
+(mínimo de 3 quadros) e mostra quantos são, a faixa e o total em disco.
+
+- **Furos na numeração não truncam o vídeo.** A entrada é uma lista do demuxer
+  `concat` (`file '…'` + `duration 1/fps`), não o padrão `%04d` do image2 — que para no primeiro
+  quadro faltante. Um still removido no meio simplesmente não entra.
+- **O fps é escolha do usuário** (23.976 / 24 / 25 / 29.97 / 30 / 50 / 59.94 / 60): quadros soltos
+  não carregam essa informação.
+- Sem áudio (`-an`), e as tags de cor do primeiro quadro são ignoradas (PNG é RGB/"gbr", que o
+  encoder recusa como `-colorspace`).
+- Mesma tabela de presets do vídeo, e as imagens originais ficam intactas.
+
 O app também preserva resolução, fps, **timecode**, tags de cor (primárias/transferência/matriz)
 e áudio em PCM 24 bits/48 kHz; VFR (celular/tela) passa sem duplicar quadros. Avisa — sem fingir
 que resolve — quando há **HDR10 estático** ou **Dolby Vision**: esses metadados não existem em ProRes.
@@ -338,7 +377,8 @@ src/CVExplorer.Host/        host C# (.NET 10, WinForms + WebView2)
   Features/FileSystem/      listagem em lotes, cópia/movimentação, conflitos
   Features/Search/          parser da busca + varredura paralela
   Features/Thumbnails/      cadeia de miniaturas, leitor de .blend
-  Features/Media/           ffprobe, escolha de perfil, comando ffmpeg, transcodificação
+  Features/Media/           ffprobe, escolha de perfil, comando ffmpeg, transcodificação,
+                            sequência de imagens, seleção de encoder H.264
   Ipc/                      ponte tipada host ↔ interface
   Native/                   interop: shell, espaço em disco, caminhos longos
   Commands.cs               contrato de comandos expostos à interface
@@ -359,7 +399,8 @@ O GitHub Action compila apenas o C#.
 
 Cobrem: idempotência do modelo de pastas (nada duplicado), marcador de projeto, detecção,
 nomes duplicados, parser da busca, escolha de perfil/estimativa de tamanho, linha de comando
-do ffmpeg, leitura do `.blend`, e duas garantias que valem por tudo:
+do ffmpeg (todos os presets e a entrada em sequência), detecção de sequência de imagens,
+leitura do `.blend`, e duas garantias que valem por tudo:
 
 - **toda chave de texto usada no JS existe em `pt-BR.json`**;
 - **todo comando chamado pela interface existe no host**.

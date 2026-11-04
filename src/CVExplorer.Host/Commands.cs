@@ -658,6 +658,125 @@ public static class Commands
             };
         }, operacao: true);
 
+        // Sequencia de imagens: qual e, quantos quadros, e o plano de conversao.
+        Add("media.sequencia", async (args, ct) =>
+        {
+            var caminho = Str(args, "caminho");
+            var fps = Num(args, "fps", 24);
+
+            var sequencia = ImageSequence.Detectar(caminho);
+            if (sequencia is null)
+            {
+                return null;
+            }
+
+            var primeiro = await host.Probe.InspectAsync(caminho, ct).ConfigureAwait(false);
+            if (primeiro is null)
+            {
+                return null;
+            }
+
+            var info = sequencia.ComoVideo(primeiro, (int)Math.Round(fps));
+            var pasta = Path.GetDirectoryName(caminho) ?? caminho;
+            var (livre, _) = Win32.FreeSpace(pasta);
+            var plano = VideoPlanBuilder.Choose(info, Str(args, "perfil", "auto"), livre);
+
+            return new
+            {
+                sequencia = new
+                {
+                    nomeBase = sequencia.NomeBase,
+                    extensao = sequencia.Extensao,
+                    quadros = sequencia.Quadros,
+                    primeiro = sequencia.Primeiro,
+                    ultimo = sequencia.Ultimo,
+                    digitos = sequencia.Digitos,
+                    comFalhas = sequencia.ComFalhas,
+                    bytes = sequencia.Bytes,
+                },
+                info = new
+                {
+                    info.Largura,
+                    info.Altura,
+                    info.PixFmt,
+                    info.TemAlpha,
+                    info.DezBits,
+                    info.Fps,
+                    duracaoSegundos = info.DuracaoSegundos,
+                    duracaoTexto = TimeSpan.FromSeconds(info.DuracaoSegundos)
+                        .ToString(info.DuracaoSegundos < 3600 ? @"mm\:ss\.ff" : @"hh\:mm\:ss"),
+                },
+                plano = new
+                {
+                    plano.Perfil,
+                    plano.NomeExibicao,
+                    plano.PixFmt,
+                    plano.ComAlpha,
+                    plano.AlvoMbps,
+                    plano.Motivo,
+                    plano.TamanhoEstimadoBytes,
+                    estimadoTexto = VideoPlanBuilder.FormatBytes(plano.TamanhoEstimadoBytes),
+                    avisos = plano.Avisos,
+                },
+                estimativas = VideoPlanBuilder.Estimates(info),
+            };
+        }, operacao: true);
+
+        Add("media.convertSequencia", async (args, ct) =>
+        {
+            var caminho = Str(args, "caminho");
+            var perfil = Str(args, "perfil", "auto");
+            var fps = (int)Math.Round(Num(args, "fps", 24));
+            var destino = Str(args, "destino", Path.GetDirectoryName(caminho) ?? caminho);
+            var opId = Str(args, "opId");
+
+            var sequencia = ImageSequence.Detectar(caminho);
+            if (sequencia is null)
+            {
+                return new { ok = false, erro = "Nao encontrei mais quadros desta sequencia." };
+            }
+
+            var primeiro = await host.Probe.InspectAsync(caminho, ct).ConfigureAwait(false);
+            if (primeiro is null)
+            {
+                return new { ok = false, erro = "Nao foi possivel ler o primeiro quadro (ffprobe ausente?)." };
+            }
+
+            var info = sequencia.ComoVideo(primeiro, Math.Max(fps, 1));
+            var (livre, _) = Win32.FreeSpace(destino);
+            var plano = VideoPlanBuilder.Choose(info, perfil, livre);
+
+            var resultado = await host.Transcode.ConvertSequenceAsync(
+                info,
+                sequencia,
+                plano,
+                info.Fps > 0 ? (int)Math.Round(info.Fps) : 24,
+                destino,
+                opId,
+                progresso =>
+                {
+                    host.Emit("media.event", new
+                    {
+                        Tipo = "convertendo",
+                        OperacaoId = opId,
+                        Arquivo = $"{sequencia.NomeBase} ({sequencia.Quadros} quadros)",
+                        Percentual = progresso.Percentual,
+                        Mensagem = progresso.Velocidade,
+                        Perfil = plano.NomeExibicao,
+                    });
+                    return Task.CompletedTask;
+                },
+                ct).ConfigureAwait(false);
+
+            return new
+            {
+                ok = resultado.Ok,
+                saida = resultado.Saida,
+                erro = resultado.Erro,
+                perfil = plano.NomeExibicao,
+            };
+        }, operacao: true);
+
         // ---------- atualizacoes ----------
 
         Add("updates.check", async (args, _) =>

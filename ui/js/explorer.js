@@ -943,6 +943,7 @@ function aoClicar(evento) {
   }
 
   aplicarSelecao();
+  prefetchSequencia(selecionados());
   preview.mostrar(selecionados()).catch(() => {});
 }
 
@@ -971,6 +972,32 @@ function abrir(item) {
 
 // ---------- menu de contexto ----------
 
+// Sequências são detectadas no host; guardamos o resultado por caminho para o menu
+// já mostrar a contagem de quadros sem esperar o clique.
+const sequencias = new Map();
+
+function prefetchSequencia(lista) {
+  if (lista.length !== 1) return;
+  const item = lista[0];
+  const caminho = item.Caminho ?? item.caminho;
+  if (!caminho || !fmt.podeSerSequencia(item.Nome ?? item.nome) || sequencias.has(caminho)) return;
+
+  sequencias.set(caminho, null);
+  call('media.sequencia', { caminho })
+    .then((dados) => sequencias.set(caminho, dados?.sequencia ?? false))
+    .catch(() => sequencias.set(caminho, false));
+}
+
+function itensConverterPara(primeiro) {
+  return dialogs.PRESETS_CONVERSAO.flatMap((grupo) => [
+    { cabecalho: grupo.grupo },
+    ...grupo.itens.map((preset) => ({
+      rotulo: preset.rotulo,
+      acao: () => dialogs.converterVideo(primeiro, state.config, preset.chave),
+    })),
+  ]);
+}
+
 function aoMenuContexto(evento) {
   evento.preventDefault();
   const alvo = evento.target.closest('[data-caminho]');
@@ -988,6 +1015,8 @@ function aoMenuContexto(evento) {
   const ehPasta = primeiro ? (primeiro.Pasta ?? primeiro.pasta) : false;
   const temVideo = selecao.some((i) => fmt.ehVideo(i.Nome ?? i.nome));
 
+  prefetchSequencia(selecao);
+
   const itens = [];
 
   if (primeiro) {
@@ -1004,6 +1033,28 @@ function aoMenuContexto(evento) {
 
     if (temVideo) {
       itens.push({ rotulo: t('menu.converter'), acao: () => dialogs.converterVideo(primeiro, state.config) });
+
+      if (umSo) {
+        itens.push({
+          rotulo: t('menu.converterPara'),
+          submenu: itensConverterPara(primeiro),
+        });
+      }
+    }
+
+    const caminhoPrimeiro = primeiro.Caminho ?? primeiro.caminho;
+    const sequencia = sequencias.get(caminhoPrimeiro);
+    const podeSequencia = umSo
+      && fmt.podeSerSequencia(primeiro.Nome ?? primeiro.nome)
+      && sequencia !== false;
+
+    if (podeSequencia) {
+      itens.push({
+        rotulo: sequencia?.quadros
+          ? t('menu.converterSequencia', { n: sequencia.quadros })
+          : t('menu.converterSequenciaGenerica'),
+        acao: () => dialogs.converterSequencia(primeiro, state.config),
+      });
     }
 
     if (ehPasta && umSo) {

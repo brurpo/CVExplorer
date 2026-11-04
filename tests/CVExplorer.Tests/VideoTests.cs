@@ -298,11 +298,317 @@ public sealed class FfmpegCommandTests
         Assert.NotEqual(info.Caminho, args[^1]);
     }
 
+    [Fact]
+    public void EspacoDeCorRgbNaoEhPassadoAoEncoder()
+    {
+        // PNG/tela chegam como "gbr": o encoder recusa com "Undefined constant".
+        var info = new MediaInfo
+        {
+            Caminho = @"C:\tela.png",
+            Largura = 1920,
+            Altura = 1080,
+            Fps = 24,
+            PixFmt = "rgb24",
+            EspacoCor = "gbr",
+        };
+
+        var plano = VideoPlanBuilder.Choose(info, "dnxhr_sq_mov", 0);
+        var args = FfmpegCommandBuilder.Build(info, plano, "e.png", "s.mov");
+
+        Assert.DoesNotContain("-colorspace", args);
+    }
+
+    [Fact]
+    public void SequenciaNaoCopiaTagsDeCorDoPrimeiroQuadro()
+    {
+        var info = new MediaInfo
+        {
+            Caminho = @"C:\seq_0001.png",
+            Largura = 1920,
+            Altura = 1080,
+            Fps = 24,
+            PixFmt = "rgb24",
+            Primarias = "bt709",
+            Transferencia = "bt709",
+            EspacoCor = "gbr",
+            FaixaCor = "pc",
+        };
+
+        var plano = VideoPlanBuilder.Choose(info, "prores422_mov", 0);
+        var args = FfmpegCommandBuilder.Build(
+            info,
+            plano,
+            @"C:\temp\lista.txt",
+            @"C:\saida.mov",
+            new FfmpegCommandBuilder.EntradaSequencia(24));
+
+        Assert.DoesNotContain("-color_primaries", args);
+        Assert.DoesNotContain("-colorspace", args);
+        Assert.DoesNotContain("-color_range", args);
+    }
+
     private static void AssertContains(List<string> args, string chave, string valor)
     {
         var indice = args.IndexOf(chave);
         Assert.True(indice >= 0, $"esperava o argumento {chave}");
         Assert.Equal(valor, args[indice + 1]);
+    }
+
+    [Theory]
+    [InlineData("prores422_mov", ".mov", "prores_ks", "pcm_s24le")]
+    [InlineData("prores4444_mov", ".mov", "prores_ks", "pcm_s24le")]
+    [InlineData("dnxhr_sq_mov", ".mov", "dnxhd", "pcm_s24le")]
+    [InlineData("dnxhr_hq_mov", ".mov", "dnxhd", "pcm_s24le")]
+    [InlineData("dnxhr_sq_mxf", ".mxf", "dnxhd", "pcm_s24le")]
+    [InlineData("dnxhr_hq_mxf", ".mxf", "dnxhd", "pcm_s24le")]
+    [InlineData("xdcam", ".mxf", "mpeg2video", "pcm_s24le")]
+    [InlineData("dxv3", ".mov", "dxv", "pcm_s16le")]
+    [InlineData("h264", ".mp4", "h264", "aac")]
+    public void PresetsManuaisDefinemCodecContainerEAudio(string chave, string container, string encoder, string audio)
+    {
+        var info = new MediaInfo
+        {
+            Caminho = @"C:\a.mxf",
+            Largura = 1920,
+            Altura = 1080,
+            Fps = 29.97,
+            PixFmt = "yuv422p",
+            TemAudio = true,
+        };
+
+        var plano = VideoPlanBuilder.Choose(info, chave, espacoLivre: 0);
+
+        Assert.Equal(chave, plano.Perfil);
+        Assert.Equal(container, plano.Container);
+        Assert.Equal(encoder, plano.Encoder);
+
+        var args = FfmpegCommandBuilder.Build(info, plano, "e.mxf", "s" + container);
+        AssertContains(args, "-c:v", encoder);
+        AssertContains(args, "-c:a", audio);
+
+        if (container == ".mxf")
+        {
+            AssertContains(args, "-f", "mxf");
+            Assert.DoesNotContain("-movflags", args);
+        }
+        else
+        {
+            Assert.Contains("-movflags", args);
+            Assert.DoesNotContain("-f", args);
+        }
+    }
+
+    [Fact]
+    public void XdcamFixaBitrateCbrDeEmissora()
+    {
+        var info = new MediaInfo { Caminho = @"C:\a.mxf", Largura = 1920, Altura = 1080, Fps = 29.97, PixFmt = "yuv422p" };
+        var plano = VideoPlanBuilder.Choose(info, "xdcam", 0);
+        var args = FfmpegCommandBuilder.Build(info, plano, "e.mxf", "s.mxf");
+
+        AssertContains(args, "-b:v", "50M");
+        AssertContains(args, "-minrate", "50M");
+        AssertContains(args, "-maxrate", "50M");
+        AssertContains(args, "-pix_fmt", "yuv422p");
+        Assert.Contains("-an", args);
+    }
+
+    [Fact]
+    public void PresetManualNaoEhTrocadoPorFaltaDeEspaco()
+    {
+        var info = new MediaInfo
+        {
+            Caminho = @"C:\a.mxf",
+            Largura = 1920,
+            Altura = 1080,
+            Fps = 29.97,
+            PixFmt = "yuv422p",
+            DuracaoSegundos = 600,
+        };
+
+        var plano = VideoPlanBuilder.Choose(info, "dnxhr_hq_mxf", espacoLivre: 1024);
+
+        Assert.Equal("dnxhr_hq_mxf", plano.Perfil);
+        Assert.Equal(".mxf", plano.Container);
+        Assert.DoesNotContain(plano.Avisos, a => a.Contains("Espaco insuficiente"));
+    }
+
+    [Fact]
+    public void H264AvisaQueAlphaSeraDescartado()
+    {
+        var info = new MediaInfo
+        {
+            Caminho = @"C:\a.mov",
+            Largura = 1920,
+            Altura = 1080,
+            Fps = 25,
+            PixFmt = "yuva444p10le",
+            TemAlpha = true,
+        };
+
+        var plano = VideoPlanBuilder.Choose(info, "h264", espacoLivre: 0);
+
+        Assert.Equal("h264", plano.Perfil);
+        Assert.False(plano.ComAlpha);
+        Assert.Contains(plano.Avisos, a => a.Contains("alpha"));
+    }
+
+    [Fact]
+    public void MenuDePresetsTemOsNoveFormatosPedidos()
+    {
+        var presets = VideoPlanBuilder.Presets();
+        Assert.Equal(9, presets.Count);
+
+        foreach (var esperado in new[]
+                 {
+                     "prores422_mov", "prores4444_mov", "dnxhr_sq_mov", "dnxhr_hq_mov",
+                     "dnxhr_sq_mxf", "dnxhr_hq_mxf", "xdcam", "dxv3", "h264",
+                 })
+        {
+            Assert.Contains(presets, p => p.Chave == esperado);
+        }
+    }
+}
+
+public sealed class SequenciaDeImagensTests : IDisposable
+{
+    private readonly string _pasta = Path.Combine(Path.GetTempPath(), $"cvexplorer-seq-{Guid.NewGuid():N}");
+
+    public SequenciaDeImagensTests() => Directory.CreateDirectory(_pasta);
+
+    public void Dispose()
+    {
+        try
+        {
+            Directory.Delete(_pasta, recursive: true);
+        }
+        catch
+        {
+            // melhor esforco
+        }
+    }
+
+    private string Criar(string nome, int bytes = 16)
+    {
+        var caminho = Path.Combine(_pasta, nome);
+        File.WriteAllBytes(caminho, new byte[bytes]);
+        return caminho;
+    }
+
+    [Fact]
+    public void DetectaPrefixoSemAcentosComFuroNaNumerable()
+    {
+        Criar("shot_0001.png");
+        Criar("shot_0002.png");
+        Criar("shot_0003.png");
+        var terceiro = Criar("shot_0010.png");
+
+        var sequencia = ImageSequence.Detectar(terceiro);
+
+        Assert.NotNull(sequencia);
+        Assert.Equal("shot", sequencia!.NomeBase);
+        Assert.Equal(".png", sequencia.Extensao);
+        Assert.Equal(4, sequencia.Quadros);
+        Assert.Equal(1, sequencia.Primeiro);
+        Assert.Equal(10, sequencia.Ultimo);
+        Assert.True(sequencia.ComFalhas);
+        Assert.Equal(4, sequencia.Arquivos.Count);
+    }
+
+    [Fact]
+    public void IgnoraArquivoSemNumeracao()
+    {
+        var solto = Criar("capa.png");
+        Criar("shot_0001.png");
+        Criar("shot_0002.png");
+        Criar("shot_0003.png");
+
+        Assert.Null(ImageSequence.Detectar(solto));
+    }
+
+    [Fact]
+    public void MenosDeTresQuadrosNaoEhSequencia()
+    {
+        Criar("render_01.exr");
+        var segundo = Criar("render_02.exr");
+
+        Assert.Null(ImageSequence.Detectar(segundo));
+    }
+
+    [Fact]
+    public void NaoMisturaExtensoesNemNumeracoesDeTamanhosDiferentes()
+    {
+        Criar("a_0001.png");
+        Criar("a_0002.png");
+        var quarto = Criar("a_0003.png");
+        Criar("a_0004.jpg");
+        Criar("a_00005.png");
+
+        var sequencia = ImageSequence.Detectar(quarto);
+
+        Assert.NotNull(sequencia);
+        Assert.Equal(3, sequencia!.Quadros);
+        Assert.All(sequencia.Arquivos, a => Assert.EndsWith(".png", a));
+    }
+
+    [Fact]
+    public void ListaDoConcatUsaBarrasNormaisECobreOsQuadros()
+    {
+        Criar("f_0001.tga");
+        Criar("f_0002.tga");
+        var terceiro = Criar("f_0003.tga");
+
+        var sequencia = ImageSequence.Detectar(terceiro)!;
+        var lista = sequencia.MontarListaConcat(24);
+
+        Assert.Equal(3, lista.Split("file '").Length - 1);
+        Assert.Contains("duration 0.041667", lista);
+        Assert.DoesNotContain(@"C:\\", lista);
+    }
+
+    [Fact]
+    public void SequenciaViraClipeSemAudioComADuracaoDoFpsEscolhido()
+    {
+        var primeiro = new MediaInfo { Caminho = "x", Largura = 2048, Altura = 858, PixFmt = "rgba", TemAlpha = true };
+        var sequencia = new ImageSequence
+        {
+            Pasta = _pasta,
+            NomeBase = "shot",
+            Extensao = ".png",
+            Digitos = 4,
+            Primeiro = 1,
+            Ultimo = 240,
+            Quadros = 240,
+            Arquivos = ["a", "b"],
+        };
+
+        var info = sequencia.ComoVideo(primeiro, 24);
+
+        Assert.Equal(10, info.DuracaoSegundos, 3);
+        Assert.False(info.TemAudio);
+        Assert.True(info.TemAlpha);
+        Assert.Equal(24, info.Fps);
+        Assert.Equal(2048, info.Largura);
+    }
+
+    [Fact]
+    public void EntradaDeSequenciaUsaDemuxerConcatSemAudio()
+    {
+        var info = new MediaInfo { Caminho = "x", Largura = 1920, Altura = 1080, PixFmt = "yuv420p", Fps = 24 };
+        var plano = VideoPlanBuilder.Choose(info, "prores422_mov", 0);
+
+        var args = FfmpegCommandBuilder.Build(
+            info,
+            plano,
+            @"C:\temp\lista.txt",
+            @"C:\saida.mov",
+            new FfmpegCommandBuilder.EntradaSequencia(24));
+
+        var indice = args.IndexOf("-f");
+        Assert.Equal(1, args.Count(a => a == "-f"));
+        Assert.Equal("concat", args[indice + 1]);
+        Assert.Equal("24", args[args.IndexOf("-r") + 1]);
+        Assert.Contains("-an", args);
+        Assert.Equal(@"C:\saida.mov", args[^1]);
     }
 }
 

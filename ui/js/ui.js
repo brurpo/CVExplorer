@@ -152,44 +152,85 @@ export function menuContexto(x, y, itens) {
   const el = document.getElementById('menu-contexto');
   el.replaceChildren();
 
-  for (const item of itens) {
-    if (item.cabecalho) {
-      const ch = document.createElement('div');
-      ch.className = 'menu-cabecalho';
-      ch.textContent = item.cabecalho;
-      el.appendChild(ch);
-      continue;
+  let submenu = null;
+
+  function fecharSubmenu() {
+    if (submenu) {
+      submenu.remove();
+      submenu = null;
     }
-
-    if (item.separador) {
-      const sep = document.createElement('div');
-      sep.className = 'menu-sep';
-      el.appendChild(sep);
-      continue;
-    }
-
-    const botao = document.createElement('button');
-    botao.className = `menu-item${item.perigo ? ' perigo' : ''}`;
-    botao.disabled = Boolean(item.desabilitado);
-
-    const texto = document.createElement('span');
-    texto.textContent = item.rotulo;
-    botao.appendChild(texto);
-
-    if (item.atalho) {
-      const atalho = document.createElement('span');
-      atalho.className = 'atalho';
-      atalho.textContent = item.atalho;
-      botao.appendChild(atalho);
-    }
-
-    botao.addEventListener('click', () => {
-      fechar();
-      item.acao?.();
-    });
-
-    el.appendChild(botao);
   }
+
+  function abrirSubmenu(botao, lista) {
+    fecharSubmenu();
+
+    const sub = document.createElement('div');
+    sub.className = 'menu-contexto';
+    sub.dataset.submenu = '1';
+    preencher(sub, lista);
+    document.body.appendChild(sub);
+
+    const area = botao.getBoundingClientRect();
+    const medidas = sub.getBoundingClientRect();
+    const esquerda = area.right + 4 + medidas.width > window.innerWidth - 8
+      ? area.left - medidas.width - 4
+      : area.right + 4;
+    const topo = Math.min(area.top - 5, window.innerHeight - medidas.height - 8);
+
+    sub.style.left = `${Math.max(6, esquerda)}px`;
+    sub.style.top = `${Math.max(6, topo)}px`;
+    submenu = sub;
+  }
+
+  function preencher(container, lista) {
+    for (const item of lista) {
+      if (item.cabecalho) {
+        const ch = document.createElement('div');
+        ch.className = 'menu-cabecalho';
+        ch.textContent = item.cabecalho;
+        container.appendChild(ch);
+        continue;
+      }
+
+      if (item.separador) {
+        const sep = document.createElement('div');
+        sep.className = 'menu-sep';
+        container.appendChild(sep);
+        continue;
+      }
+
+      const botao = document.createElement('button');
+      botao.className = `menu-item${item.perigo ? ' perigo' : ''}`;
+      botao.disabled = Boolean(item.desabilitado);
+
+      const texto = document.createElement('span');
+      texto.textContent = item.rotulo;
+      botao.appendChild(texto);
+
+      const sufixo = item.submenu ? '▸' : item.atalho;
+      if (sufixo) {
+        const atalho = document.createElement('span');
+        atalho.className = 'atalho';
+        atalho.textContent = sufixo;
+        botao.appendChild(atalho);
+      }
+
+      if (item.submenu) {
+        botao.addEventListener('mouseenter', () => abrirSubmenu(botao, item.submenu));
+        botao.addEventListener('click', () => abrirSubmenu(botao, item.submenu));
+      } else {
+        botao.addEventListener('mouseenter', fecharSubmenu);
+        botao.addEventListener('click', () => {
+          fechar();
+          item.acao?.();
+        });
+      }
+
+      container.appendChild(botao);
+    }
+  }
+
+  preencher(el, itens);
 
   el.hidden = false;
   el.style.left = '0px';
@@ -202,6 +243,7 @@ export function menuContexto(x, y, itens) {
   el.style.top = `${Math.max(6, top)}px`;
 
   function fechar() {
+    fecharSubmenu();
     el.hidden = true;
     el.replaceChildren();
     document.removeEventListener('mousedown', aoClicarFora, true);
@@ -211,7 +253,8 @@ export function menuContexto(x, y, itens) {
   }
 
   function aoClicarFora(e) {
-    if (!el.contains(e.target)) fechar();
+    if (el.contains(e.target) || submenu?.contains(e.target)) return;
+    fechar();
   }
 
   function aoTeclar(e) {

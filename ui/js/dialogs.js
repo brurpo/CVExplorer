@@ -3,7 +3,79 @@ import { t } from './i18n.js';
 import * as fmt from './format.js';
 import * as ui from './ui.js';
 
-const PERFIS = ['auto', 'prores422lt', 'prores422', 'prores422hq', 'prores4444', 'dnxhr_lb', 'dnxhr_sq', 'dnxhr_hqx', 'proxy'];
+const PERFIS_EDICAO = ['prores422lt', 'prores422', 'prores422hq', 'prores4444', 'dnxhr_lb', 'dnxhr_sq', 'dnxhr_hqx', 'proxy'];
+
+const PERFIS = ['auto', ...PERFIS_EDICAO];
+
+/**
+ * Presets de entrega do menu de contexto ("Converter para"). A chave e a mesma
+ * que o host usa em VideoPlanBuilder, que define codec, container e audio.
+ */
+export const PRESETS_CONVERSAO = [
+  {
+    grupo: 'MOV',
+    itens: [
+      { chave: 'prores422_mov', rotulo: 'ProRes 422' },
+      { chave: 'prores4444_mov', rotulo: 'ProRes 4444 (alpha)' },
+      { chave: 'dnxhr_sq_mov', rotulo: 'DNxHR SQ' },
+      { chave: 'dnxhr_hq_mov', rotulo: 'DNxHR HQ' },
+      { chave: 'dxv3', rotulo: 'DXV3' },
+    ],
+  },
+  {
+    grupo: 'MXF',
+    itens: [
+      { chave: 'dnxhr_sq_mxf', rotulo: 'DNxHR SQ' },
+      { chave: 'dnxhr_hq_mxf', rotulo: 'DNxHR HQ' },
+      { chave: 'xdcam', rotulo: 'XDCAM HD422 50 Mbps' },
+    ],
+  },
+  {
+    grupo: 'MP4',
+    itens: [{ chave: 'h264', rotulo: 'H.264' }],
+  },
+];
+
+const FPS_COMUNS = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60];
+
+function seletorPerfil(estimativas, valorInicial) {
+  const nomes = new Map((estimativas ?? []).map((e) => [e.Perfil, e]));
+  const seletor = document.createElement('select');
+
+  const grupo = (rotulo) => {
+    const el = document.createElement('optgroup');
+    el.label = rotulo;
+    seletor.appendChild(el);
+    return el;
+  };
+
+  const auto = document.createElement('option');
+  auto.value = 'auto';
+  auto.textContent = t('video.perfis.auto');
+  grupo(t('video.grupoAuto')).appendChild(auto);
+
+  const edicao = grupo(t('video.grupoEdicao'));
+  for (const valor of PERFIS_EDICAO) {
+    const opcao = document.createElement('option');
+    const tamanho = nomes.get(valor)?.Texto;
+    opcao.value = valor;
+    opcao.textContent = tamanho ? `${t(`video.perfis.${valor}`)} — ${tamanho}` : t(`video.perfis.${valor}`);
+    edicao.appendChild(opcao);
+  }
+
+  // O que sobra das estimativas sao os presets de entrega (MOV/MXF/MP4), que o host nomeia.
+  const entrega = grupo(t('video.grupoEntrega'));
+  for (const [chave, dados] of nomes) {
+    if (PERFIS_EDICAO.includes(chave)) continue;
+    const opcao = document.createElement('option');
+    opcao.value = chave;
+    opcao.textContent = dados.Texto ? `${dados.Nome} — ${dados.Texto}` : dados.Nome;
+    entrega.appendChild(opcao);
+  }
+
+  seletor.value = valorInicial ?? 'auto';
+  return seletor;
+}
 
 export function pedirTexto({ titulo, rotulo, valor = '', dica }) {
   return new Promise((resolve) => {
@@ -487,12 +559,12 @@ export async function confirmarConversao(videos, totalItens = videos.length, con
   });
 }
 
-export async function converterVideo(item, config) {
+export async function converterVideo(item, config, perfilInicial = null) {
   const caminho = item.Caminho ?? item.caminho;
   let info;
 
   try {
-    info = await call('media.probe', { caminho, perfil: config?.PerfilVideoPadrao ?? 'auto' });
+    info = await call('media.probe', { caminho, perfil: perfilInicial ?? config?.PerfilVideoPadrao ?? 'auto' });
   } catch (erro) {
     ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
     return;
@@ -505,7 +577,6 @@ export async function converterVideo(item, config) {
 
   const corpo = document.createElement('div');
   const tamanhoOriginal = item.Tamanho ?? item.tamanho ?? 0;
-  const estimativas = new Map((info.estimativas ?? []).map((e) => [e.Perfil, e]));
 
   const detalhes = document.createElement('div');
   detalhes.style.display = 'grid';
@@ -519,19 +590,7 @@ export async function converterVideo(item, config) {
     <span style="color:var(--muted)">${t('video.arquivoAtual')}</span><span style="color:var(--text-2)">${fmt.bytes(tamanhoOriginal)}</span>
   `;
 
-  const perfil = document.createElement('select');
-  for (const valor of PERFIS) {
-    const opcao = document.createElement('option');
-    const tamanho = valor === 'auto'
-      ? estimativas.get(info.plano.Perfil)?.Texto
-      : estimativas.get(valor)?.Texto;
-    opcao.value = valor;
-    opcao.textContent = tamanho
-      ? `${t(`video.perfis.${valor}`)} — ${tamanho}`
-      : t(`video.perfis.${valor}`);
-    perfil.appendChild(opcao);
-  }
-  perfil.value = config?.PerfilVideoPadrao ?? 'auto';
+  const perfil = seletorPerfil(info.estimativas, perfilInicial ?? config?.PerfilVideoPadrao ?? 'auto');
 
   const estimativa = document.createElement('div');
   estimativa.style.fontSize = '12px';
@@ -599,6 +658,156 @@ async function executarConversao(caminho, perfil) {
 
   try {
     const resultado = await call('media.convert', { caminho, perfil, destino, opId });
+    card.fechar(400);
+
+    if (resultado?.ok) {
+      ui.toast(t('video.concluido', {
+        arquivo: fmt.nomearArquivo(resultado.saida),
+        perfil: resultado.perfil ?? perfil,
+      }), 'ok', 6000);
+      document.dispatchEvent(new CustomEvent('recarregar'));
+    } else {
+      ui.toast(t('video.erro', { arquivo: fmt.nomearArquivo(caminho), erro: resultado?.erro ?? '—' }), 'erro', 8000);
+    }
+  } catch (erro) {
+    card.fechar(400);
+    ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
+  }
+}
+
+// ---------- conversão de sequência de imagens ----------
+
+/**
+ * Sequência de imagens (render, EXR de composição, DPX) vira um único vídeo.
+ * O fps é escolhido aqui: o arquivo não carrega essa informação.
+ */
+export async function converterSequencia(item, config, perfilInicial = null) {
+  const caminho = item.Caminho ?? item.caminho;
+
+  let dados;
+  try {
+    dados = await call('media.sequencia', {
+      caminho,
+      perfil: perfilInicial ?? config?.PerfilVideoPadrao ?? 'auto',
+    });
+  } catch (erro) {
+    ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
+    return;
+  }
+
+  if (!dados?.sequencia) {
+    ui.toast(t('video.semSequencia'), 'aviso', 6000);
+    return;
+  }
+
+  const corpo = document.createElement('div');
+
+  const detalhes = document.createElement('div');
+  detalhes.style.display = 'grid';
+  detalhes.style.gridTemplateColumns = 'auto 1fr';
+  detalhes.style.gap = '5px 14px';
+  detalhes.style.fontSize = '12px';
+
+  const faixa = dados.sequencia.primeiro === dados.sequencia.ultimo
+    ? String(dados.sequencia.primeiro).padStart(dados.sequencia.digitos, '0')
+    : `${String(dados.sequencia.primeiro).padStart(dados.sequencia.digitos, '0')} – ${dados.sequencia.ultimo}`;
+
+  detalhes.innerHTML = `
+    <span style="color:var(--muted)">${t('video.sequenciaQuadros')}</span><span style="color:var(--text-2)">${dados.sequencia.quadros} (${escapar(dados.sequencia.nomeBase)}_${escapar(faixa)}${escapar(dados.sequencia.extensao)})</span>
+    <span style="color:var(--muted)">${t('video.resolucao')}</span><span style="color:var(--text-2)">${dados.info.Largura} × ${dados.info.Altura} · ${dados.info.DezBits ? '10+' : '8'} bits · ${escapar(dados.info.PixFmt)}${dados.info.TemAlpha ? ` · ${t('video.alpha')}` : ''}</span>
+    <span style="color:var(--muted)">${t('video.arquivoAtual')}</span><span style="color:var(--text-2)">${fmt.bytes(dados.sequencia.bytes)}</span>
+  `;
+
+  const fps = document.createElement('select');
+  const sugestao = Math.round(dados.info.Fps) || 24;
+  for (const valor of FPS_COMUNS) {
+    const opcao = document.createElement('option');
+    opcao.value = String(valor);
+    opcao.textContent = `${valor} fps`;
+    fps.appendChild(opcao);
+  }
+  fps.value = String(FPS_COMUNS.includes(sugestao) ? sugestao : 24);
+
+  const perfil = seletorPerfil(dados.estimativas, perfilInicial ?? config?.PerfilVideoPadrao ?? 'auto');
+
+  const estimativa = document.createElement('div');
+  estimativa.style.fontSize = '12px';
+  estimativa.style.color = 'var(--text-2)';
+
+  const avisos = document.createElement('div');
+  avisos.style.display = 'flex';
+  avisos.style.flexDirection = 'column';
+  avisos.style.gap = '6px';
+
+  const atualizarPlano = async () => {
+    try {
+      const resposta = await call('media.sequencia', {
+        caminho,
+        perfil: perfil.value,
+        fps: Number(fps.value),
+      });
+
+      if (!resposta?.plano) {
+        estimativa.textContent = '';
+        return;
+      }
+
+      estimativa.textContent = `${resposta.plano.NomeExibicao} · ${resposta.plano.estimadoTexto} · ${resposta.info.duracaoTexto}`;
+
+      avisos.replaceChildren();
+      if (resposta.plano.Motivo) avisos.appendChild(ui.caixaAviso(resposta.plano.Motivo, 'info'));
+      if (dados.sequencia.comFalhas) {
+        avisos.appendChild(ui.caixaAviso(t('video.sequenciaFalhas'), 'aviso'));
+      }
+      for (const aviso of resposta.plano.avisos ?? []) avisos.appendChild(ui.caixaAviso(aviso, 'aviso'));
+    } catch {
+      estimativa.textContent = '';
+    }
+  };
+
+  perfil.addEventListener('change', atualizarPlano);
+  fps.addEventListener('change', atualizarPlano);
+  await atualizarPlano();
+
+  corpo.append(
+    detalhes,
+    ui.campo(t('video.fps'), fps, t('video.fpsDica')),
+    ui.campo(t('video.perfil'), perfil),
+    ui.campo(t('video.estimativa'), estimativa),
+    ui.campo(t('video.avisos'), avisos),
+    ui.caixaAviso(t('video.sequenciaDescricao'), 'info'),
+  );
+
+  ui.modal({
+    titulo: t('video.sequenciaTitulo'),
+    descricao: `${dados.sequencia.nomeBase}${dados.sequencia.extensao}`,
+    corpo,
+    botoes: [
+      { texto: t('dialogo.cancelar') },
+      {
+        texto: t('video.converter'),
+        tipo: 'primario',
+        acao: async (fechar) => {
+          fechar();
+          await executarConversaoSequencia(caminho, perfil.value, Number(fps.value));
+        },
+      },
+    ],
+  });
+}
+
+async function executarConversaoSequencia(caminho, perfil, fps) {
+  const opId = `seq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const destino = fmt.pastaDe(caminho);
+  const card = ui.progresso({
+    id: opId,
+    titulo: t('progresso.convertendoSequencia'),
+    subtitulo: fmt.nomearArquivo(caminho),
+  });
+  card.aoCancelar = () => call('media.cancel', { opId }).catch(() => {});
+
+  try {
+    const resultado = await call('media.convertSequencia', { caminho, perfil, fps, destino, opId });
     card.fechar(400);
 
     if (resultado?.ok) {
