@@ -15,17 +15,20 @@ public sealed class IpcBridge
     private readonly Dictionary<string, Route> _routes;
     private readonly CancellationRegistry _cancellations;
     private readonly SynchronizationContext _ui;
+    private readonly Action? _aoIniciarComando;
 
     public sealed record Route(Func<JsonElement, CancellationToken, Task<object?>> Handler, bool UsaOperacao);
 
     public IpcBridge(
         CoreWebView2 web,
         Dictionary<string, Route> routes,
-        CancellationRegistry cancellations)
+        CancellationRegistry cancellations,
+        Action? aoIniciarComando = null)
     {
         _web = web;
         _routes = routes;
         _cancellations = cancellations;
+        _aoIniciarComando = aoIniciarComando;
         // Capturado na criacao (thread da UI): eventos vindos do ffmpeg/copia
         // precisam ser publicados aqui, senao o WebView2 recusa a mensagem.
         _ui = SynchronizationContext.Current ?? new SynchronizationContext();
@@ -63,6 +66,9 @@ public sealed class IpcBridge
         long id = 0;
         try
         {
+            // Marca a janela de origem: os eventos da operacao voltam para ela.
+            _aoIniciarComando?.Invoke();
+
             using var doc = JsonDocument.Parse(e.WebMessageAsJson);
             var root = doc.RootElement;
 

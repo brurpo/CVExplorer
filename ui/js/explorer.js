@@ -44,9 +44,15 @@ export function iniciarExplorer() {
   area.addEventListener('scroll', desenhar, { passive: true });
   document.addEventListener('keydown', aoTeclar);
   window.addEventListener('resize', () => {
+    medirBarraRolagem();
     desenhar();
     if (state.caminho) atualizarMigalhas(state.caminho);
   });
+
+  // A barra de rolagem aparece/desaparece conforme a lista: mantem o cabecalho alinhado.
+  if (typeof ResizeObserver === 'function') {
+    new ResizeObserver(() => medirBarraRolagem()).observe(area);
+  }
 
   btnVoltar.addEventListener('click', voltar);
   btnAvancar.addEventListener('click', avancar);
@@ -62,6 +68,7 @@ export function iniciarExplorer() {
 
   carregarPreferencias();
   aplicarColunas();
+  medirBarraRolagem();
   iniciarEndereco();
 
   on('dir.batch', (dados) => {
@@ -100,6 +107,19 @@ export function iniciarExplorer() {
     await colarCaminhos(dados.caminhos, false);
   });
 
+  // Outra janela comecou um arraste: se o cursor estiver sobre esta, mostra o alvo.
+  on('arraste.estado', (dados) => mostrarAlvoArraste(dados));
+  on('arraste.erro', (dados) => {
+    if (dados?.mensagem) ui.toast(dados.mensagem, 'erro', 7000);
+  });
+  on('dir.refresh', (dados) => {
+    if (!dados?.caminho) return;
+    const mesmo = (a, b) => a.replace(/[\\/]+$/, '').toLowerCase() === b.replace(/[\\/]+$/, '').toLowerCase();
+    if (state.caminho && mesmo(dados.caminho, state.caminho)) recarregar();
+  });
+
+  iniciarArrasteExterno();
+
   on('op.progress', (dados) => {
     const card = ui.progresso({
       id: dados.OperacaoId,
@@ -118,6 +138,116 @@ export function iniciarExplorer() {
     const chave = { substituir: 'substituir', manterAmbos: 'manterAmbos', pular: 'pular' }[decisao.escolha] ?? 'cancelar';
     await call('fs.conflict', { id: info.Id, decisao: chave, aplicarTodos }).catch(() => {});
   });
+}
+
+// ---------- arraste (dentro e entre janelas) ----------
+
+/**
+ * Arrastar entre janelas nao pode ser HTML5 drag-and-drop: cada WebView2 e um
+ * navegador separado e captura o mouse no mousedown, entao o "soltar" nunca chega
+ * na outra janela. O host acompanha o cursor de verdade e entrega os arquivos na
+ * pasta atual da janela alvo; aqui so avisamos o inicio/fim do arraste.
+ */
+function iniciarArrasteExterno() {
+  area.addEventListener('pointerdown', (evento) => {
+    if (evento.button !== 0) return;
+
+    const alvo = evento.target.closest('[data-caminho]');
+    if (!alvo || evento.target.closest('button, input, .alca')) return;
+
+    const inicio = { x: evento.clientX, y: evento.clientY };
+    let ativo = false;
+    let caminhos = [];
+    let copiar = false;
+
+    const mover = (e) => {
+      if (!ativo) {
+        if (Math.abs(e.clientX - inicio.x) < 6 && Math.abs(e.clientY - inicio.y) < 6) return;
+
+        const caminhoAlvo = alvo.dataset.caminho;
+        if (!state.selecao.has(caminhoAlvo)) {
+          state.selecao.clear();
+          state.selecao.add(caminhoAlvo);
+          aplicarSelecao();
+        }
+
+        caminhos = selecionados().map((i) => i.Caminho ?? i.caminho).filter(Boolean);
+        if (caminhos.length === 0) return;
+
+        copiar = e.ctrlKey;
+        ativo = true;
+        document.body.classList.add('arrastando');
+        call('arraste.iniciar', { caminhos, copiar }).catch(() => {});
+      }
+    };
+
+    const soltar = (e) => {
+      encerrar();
+      if (!ativo) return;
+
+      // Soltou dentro desta janela, sobre uma pasta: move/copia para ela.
+      const sobCursor = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-caminho]');
+      const item = sobCursor
+        ? itensAtuais().find((i) => (i.Caminho ?? i.caminho) === sobCursor.dataset.caminho)
+        : null;
+
+      if (item && (item.Pasta ?? item.pasta)) {
+        call('arraste.cancelar').catch(() => {});
+        entregarEm(item.Caminho ?? item.caminho, caminhos, e.ctrlKey || copiar);
+      } else {
+        // Deixa o host decidir: outra janela sob o cursor recebe os arquivos.
+        call('arraste.soltar').catch(() => {});
+      }
+    };
+
+    const cancelar = () => {
+      encerrar();
+      if (ativo) call('arraste.cancelar').catch(() => {});
+    };
+
+    function encerrar() {
+      window.removeEventListener('pointermove', mover);
+      window.removeEventListener('pointerup', soltar);
+      window.removeEventListener('pointercancel', cancelar);
+      document.body.classList.remove('arrastando');
+    }
+
+    window.addEventListener('pointermove', mover);
+    window.addEventListener('pointerup', soltar);
+    window.addEventListener('pointercancel', cancelar);
+  });
+}
+
+async function entregarEm(destino, caminhos, copiar) {
+  const opId = `arraste-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  try {
+    if (copiar) {
+      await call('fs.copy', { origens: caminhos, destino, opId });
+    } else {
+      await call('fs.move', { origens: caminhos, destino, opId });
+    }
+  } catch (erro) {
+    ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
+  }
+
+  recarregar();
+}
+
+function mostrarAlvoArraste(dados) {
+  const overlay = document.getElementById('arraste-alvo');
+  if (!overlay) return;
+
+  const meuId = state.info?.janela;
+  if (!dados?.ativo || !dados.alvo || dados.alvo !== meuId) {
+    overlay.hidden = true;
+    return;
+  }
+
+  overlay.hidden = false;
+  overlay.querySelector('.arraste-texto').textContent = dados.copiar
+    ? t('arraste.copiarAqui')
+    : t('arraste.moverAqui');
+  overlay.querySelector('.arraste-pasta').textContent = dados.pasta ?? '';
 }
 
 // ---------- navegação ----------
@@ -359,32 +489,69 @@ function atualizarSetasOrdenacao() {
 
 // ---------- colunas redimensionáveis ----------
 
+const COLUNAS = {
+  nome: { min: 120, max: 2400, padrao: 340, variavel: '--w-nome' },
+  tamanho: { min: 64, max: 600, padrao: 92, variavel: '--w-tam' },
+  data: { min: 88, max: 600, padrao: 132, variavel: '--w-data' },
+};
+
 function aplicarColunas() {
   // Na raiz: vale para o cabecalho (fora do scroller) e para as linhas.
   const raiz = document.documentElement;
-  raiz.style.setProperty('--w-tam', `${state.colunas.tamanho}px`);
-  raiz.style.setProperty('--w-data', `${state.colunas.data}px`);
+  for (const [chave, def] of Object.entries(COLUNAS)) {
+    raiz.style.setProperty(def.variavel, `${state.colunas[chave]}px`);
+  }
+}
+
+/**
+ * O cabecalho fica fora do scroller, entao a barra de rolagem vertical
+ * encurta as linhas sem encurtar o cabecalho: sem isso a alca fica alguns
+ * pixels a direita da divisoria real.
+ */
+function medirBarraRolagem() {
+  const largura = area.clientWidth > 0 ? Math.max(0, area.offsetWidth - area.clientWidth) : 0;
+  document.documentElement.style.setProperty('--sbw', `${Math.round(largura)}px`);
 }
 
 function garantirAlca(coluna) {
+  const def = COLUNAS[coluna];
   const alca = document.createElement('div');
   alca.className = 'alca';
+  alca.dataset.coluna = coluna;
   alca.title = t('coluna.redimensionar');
+  alca.setAttribute('role', 'separator');
+  alca.setAttribute('aria-orientation', 'vertical');
 
   // Captura de ponteiro: os eventos continuam chegando mesmo se o mouse
   // sair do cabecalho durante o arraste.
   alca.addEventListener('pointerdown', (evento) => {
+    if (evento.button !== 0) return;
     evento.preventDefault();
     evento.stopPropagation();
 
+    // clientX ja vem em px de CSS: independe da escala do Windows.
     const inicioX = evento.clientX;
     const larguraInicial = state.colunas[coluna];
-    try { alca.setPointerCapture(evento.pointerId); } catch { /* ponteiro sintetico */ }
+    let larguraAtual = larguraInicial;
+    let arrastou = false;
+
+    alca.classList.add('ativa');
     document.body.classList.add('redimensionando');
+    try { alca.setPointerCapture(evento.pointerId); } catch { /* ponteiro sintetico */ }
 
     const mover = (e) => {
-      const largura = Math.max(56, Math.min(460, larguraInicial + (e.clientX - inicioX)));
-      state.colunas[coluna] = Math.round(largura);
+      const delta = e.clientX - inicioX;
+      if (!arrastou && Math.abs(delta) < 2) return;
+      arrastou = true;
+
+      // limite: nunca deixa a coluna empurrar tamanho/data para fora da area
+      const limiteArea = Math.max(def.min, area.clientWidth - 40);
+      larguraAtual = Math.min(def.max, Math.max(def.min, larguraInicial + delta));
+      if (coluna === 'nome') {
+        larguraAtual = Math.min(larguraAtual, limiteArea);
+      }
+
+      state.colunas[coluna] = Math.round(larguraAtual);
       aplicarColunas();
     };
 
@@ -392,15 +559,30 @@ function garantirAlca(coluna) {
       alca.removeEventListener('pointermove', mover);
       alca.removeEventListener('pointerup', soltar);
       alca.removeEventListener('pointercancel', soltar);
+      alca.classList.remove('ativa');
       document.body.classList.remove('redimensionando');
       try { alca.releasePointerCapture(evento.pointerId); } catch { /* ja liberado */ }
-      localStorage.setItem('cvexplorer:colunas', JSON.stringify(state.colunas));
-      desenhar();
+
+      if (arrastou) {
+        localStorage.setItem('cvexplorer:colunas', JSON.stringify(state.colunas));
+        medirBarraRolagem();
+        desenhar();
+      }
     };
 
     alca.addEventListener('pointermove', mover);
     alca.addEventListener('pointerup', soltar);
     alca.addEventListener('pointercancel', soltar);
+  });
+
+  // Duplo clique volta ao padrao da coluna.
+  alca.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    state.colunas[coluna] = def.padrao;
+    aplicarColunas();
+    localStorage.setItem('cvexplorer:colunas', JSON.stringify(state.colunas));
+    desenhar();
   });
 
   alca.addEventListener('click', (e) => e.stopPropagation());
@@ -410,11 +592,12 @@ function garantirAlca(coluna) {
 function carregarPreferencias() {
   try {
     const colunas = JSON.parse(localStorage.getItem('cvexplorer:colunas') ?? 'null');
-    if (colunas && typeof colunas.tamanho === 'number' && typeof colunas.data === 'number') {
-      state.colunas = {
-        tamanho: Math.min(460, Math.max(56, colunas.tamanho)),
-        data: Math.min(460, Math.max(56, colunas.data)),
-      };
+    if (colunas) {
+      for (const [chave, def] of Object.entries(COLUNAS)) {
+        if (typeof colunas[chave] === 'number') {
+          state.colunas[chave] = Math.min(def.max, Math.max(def.min, colunas[chave]));
+        }
+      }
     }
 
     const ordenacao = JSON.parse(localStorage.getItem('cvexplorer:ordenacao') ?? 'null');
@@ -434,9 +617,10 @@ function garantirCabecalho() {
 
   const colunas = [
     { campo: null, texto: '' },
-    { campo: 'nome', texto: t('coluna.nome') },
+    { campo: 'nome', texto: t('coluna.nome'), redimensionavel: 'nome' },
     { campo: 'tamanho', texto: t('preview.tamanho'), redimensionavel: 'tamanho' },
     { campo: 'modificado', texto: t('preview.modificado'), redimensionavel: 'data' },
+    { campo: null, texto: '' },
   ];
 
   cabecalhoEl.replaceChildren();
@@ -449,6 +633,7 @@ function garantirCabecalho() {
 
     const celula = document.createElement('button');
     celula.className = 'cabecalho-celula';
+    if (coluna.campo === 'nome') celula.classList.add('inicio');
     celula.dataset.campo = coluna.campo;
     celula.type = 'button';
     celula.title = t('coluna.ordenar', { coluna: coluna.texto });

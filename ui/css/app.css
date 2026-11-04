@@ -223,10 +223,37 @@
 /* ---------- estrutura ---------- */
 .shell {
   display: grid;
-  grid-template-columns: 246px minmax(0, 1fr) auto;
+  grid-template-columns: 246px minmax(0, 1fr) auto auto;
   min-height: 0;
   min-width: 0;
 }
+
+/* divisor arrastável entre a lista e a prévia */
+.divisor-preview {
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  border-left: 1px solid var(--border);
+  touch-action: none;
+  transition: background var(--dur);
+  position: relative;
+  z-index: 3;
+}
+
+.divisor-preview::after {
+  content: "";
+  position: absolute;
+  inset: 0 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background var(--dur);
+}
+
+.divisor-preview:hover::after,
+body.redimensionando-preview .divisor-preview::after { background: var(--accent); }
+
+body.redimensionando-preview { cursor: col-resize; }
+body.redimensionando-preview * { cursor: col-resize !important; user-select: none !important; }
 
 .sidebar {
   display: flex;
@@ -408,7 +435,12 @@
   left: 12px;
   right: 12px;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) var(--w-tam, 92px) var(--w-data, 132px);
+  grid-template-columns:
+    20px
+    minmax(120px, var(--w-nome, 340px))
+    var(--w-tam, 92px)
+    var(--w-data, 132px)
+    minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   height: 28px;
@@ -432,10 +464,16 @@
   position: relative;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
-  padding: 0 20px;
+  /* --sbw compensa a barra de rolagem do scroller (cabecalho fica fora dele). */
+  padding: 0 calc(20px + var(--sbw, 0px)) 0 20px;
   height: 27px;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) var(--w-tam, 92px) var(--w-data, 132px);
+  grid-template-columns:
+    20px
+    minmax(120px, var(--w-nome, 340px))
+    var(--w-tam, 92px)
+    var(--w-data, 132px)
+    minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   color: var(--muted);
@@ -463,6 +501,12 @@
 .col-cabecalho .cabecalho-celula:hover { color: var(--text); }
 .col-cabecalho .cabecalho-celula.ordenado { color: var(--accent-strong); }
 
+/* nome cresce da esquerda; tamanho/data alinham a direita como os valores */
+.col-cabecalho .cabecalho-celula.inicio {
+  justify-content: flex-start;
+  text-align: left;
+}
+
 .col-cabecalho .seta {
   font-size: 9px;
   opacity: 0.85;
@@ -472,21 +516,25 @@
 .col-cabecalho .alca {
   position: absolute;
   top: 0;
-  right: -5px;
-  width: 16px;
+  right: -6px;
+  width: 13px;
   height: 100%;
   cursor: col-resize;
   background: transparent;
   z-index: 3;
+  touch-action: none;
+  /* área de toque confortável também em telas com escala alta */
+  -webkit-tap-highlight-color: transparent;
 }
 
 body.redimensionando .col-cabecalho { border-bottom-color: var(--accent); }
 body.redimensionando { cursor: col-resize; }
+body.redimensionando * { cursor: col-resize !important; user-select: none !important; }
 
 .col-cabecalho .alca::after {
   content: "";
   position: absolute;
-  left: 7px;
+  left: 6px;
   top: 4px;
   bottom: 4px;
   width: 2px;
@@ -496,7 +544,8 @@ body.redimensionando { cursor: col-resize; }
   pointer-events: none;
 }
 
-.col-cabecalho .alca:hover::after { background: var(--accent); }
+.col-cabecalho .alca:hover::after,
+body.redimensionando .col-cabecalho .alca.ativa::after { background: var(--accent); }
 
 /* indicador de digitação rápida (type-ahead) */
 .digitacao {
@@ -529,11 +578,52 @@ body.redimensionando { cursor: col-resize; }
 .vazio-titulo { margin: 0; color: var(--text-2); font-size: 13.5px; }
 .vazio-texto { margin: 0; color: var(--muted-2); font-size: 12px; }
 
+/* ---------- alvo de arraste entre janelas ---------- */
+.arraste-alvo {
+  position: fixed;
+  inset: 8px;
+  z-index: 40;
+  pointer-events: none;
+  border: 2px dashed var(--accent);
+  border-radius: 10px;
+  background: rgba(94, 165, 255, 0.07);
+  display: grid;
+  place-items: center;
+}
+
+.arraste-caixa {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 22px;
+  border-radius: 10px;
+  background: rgba(16, 17, 20, 0.92);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  max-width: 70%;
+}
+
+.arraste-texto { color: var(--accent-strong); font-size: 13px; font-weight: 600; }
+.arraste-pasta {
+  color: var(--muted);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+body.arrastando { cursor: grabbing !important; }
+body.arrastando .row, body.arrastando .telha { cursor: grabbing; }
+
 /* ---------- pré-visualização ---------- */
 .preview {
   display: flex;
   flex-direction: column;
-  width: 302px;
+  width: var(--w-preview, 320px);
+  min-width: 240px;
+  max-width: calc(100vw - 420px);
   min-height: 0;
   background: var(--bg-elev);
   border-left: 1px solid var(--border);
@@ -576,7 +666,93 @@ body.redimensionando { cursor: col-resize; }
   object-fit: contain;
 }
 
+.preview-corpo video {
+  width: 100%;
+  background: #000;
+  outline: none;
+}
+
+/* player de vídeo (fluxo do ffmpeg) */
+.player {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-height: 0;
+}
+
+.player video {
+  width: 100%;
+  max-height: calc(100% - 34px);
+  background: #000;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+}
+
+.player-controles {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.player-btn {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 24px;
+  border-radius: 5px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  font-size: 11px;
+  display: grid;
+  place-items: center;
+  transition: background var(--dur), color var(--dur);
+}
+
+.player-btn:hover { background: var(--surface-3); color: var(--text); }
+
+.player-barra {
+  flex: 1;
+  min-width: 40px;
+  height: 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.player-tempo {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* preparação */
+.previa-preparando {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+}
+
+.previa-poster {
+  max-width: 100%;
+  max-height: 190px;
+  border-radius: var(--radius-sm);
+  opacity: 0.55;
+}
+
 .preview-corpo .placeholder { color: var(--muted-2); font-size: 12px; }
+
+/* com vídeo: o player encosta no topo e ocupa a largura toda */
+.preview-corpo.com-player {
+  place-items: start stretch;
+  padding: 0;
+}
+
+.preview-corpo.com-player .player { height: 100%; }
+.preview-corpo.com-player .player video { max-height: calc(100% - 40px); }
 
 .preview-meta {
   border-top: 1px solid var(--border);

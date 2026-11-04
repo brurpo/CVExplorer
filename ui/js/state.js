@@ -18,7 +18,10 @@ export const state = {
   ordenacao: { campo: 'nome', desc: false },
 
   /** Largura das colunas redimensionáveis (px). */
-  colunas: { tamanho: 92, data: 132 },
+  colunas: { nome: 340, tamanho: 92, data: 132 },
+
+  /** Arraste entre janelas / pastas. */
+  arraste: { ativo: false, caminhos: [], dentroJanela: false },
 };
 
 const barramento = new EventTarget();

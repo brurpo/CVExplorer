@@ -5,6 +5,7 @@ using CVExplorer.Host.Features.Projects;
 using CVExplorer.Host.Features.Search;
 using CVExplorer.Host.Features.Thumbnails;
 using CVExplorer.Host.Ipc;
+using Microsoft.Web.WebView2.Core;
 
 namespace CVExplorer.Host;
 
@@ -13,6 +14,12 @@ namespace CVExplorer.Host;
 /// </summary>
 public sealed class AppHost
 {
+    private static readonly AsyncLocal<Janela?> ContextoAtual = new();
+
+    private readonly List<Janela> _janelas = new();
+    private CoreWebView2Environment? _ambiente;
+    private Dictionary<string, IpcBridge.Route>? _routes;
+
     public SettingsStore Store { get; } = new();
 
     public AppSettings Settings => Store.Current;
@@ -31,6 +38,10 @@ public sealed class AppHost
 
     public TranscodeService Transcode { get; }
 
+    public PreviewStreamService Previa { get; }
+
+    public PlayerServer Player { get; }
+
     public FileOperations Files { get; }
 
     public PasteService Paste { get; }
@@ -41,7 +52,18 @@ public sealed class AppHost
 
     public UpdateService Updates { get; } = new();
 
-    public IpcBridge? Bridge { get; set; }
+    public ArrasteService Arraste { get; }
+
+    /// <summary>Janela que abriu o comando em execucao (para eventos e conflitos).</summary>
+    public Janela? JanelaDoContexto => ContextoAtual.Value;
+
+    public Janela? JanelaAtiva { get; set; }
+
+    public IReadOnlyList<Janela> Janelas => _janelas;
+
+    public Dictionary<string, IpcBridge.Route> Routes => _routes ??= Commands.Build(this);
+
+    public void DefinirContexto(Janela janela) => ContextoAtual.Value = janela;
 
     public AppHost()
     {
@@ -52,13 +74,110 @@ public sealed class AppHost
         Ffmpeg = new FfmpegLocator(Settings);
         Probe = new MediaProbe(Ffmpeg);
         Transcode = new TranscodeService(Ffmpeg);
+        Previa = new PreviewStreamService(Ffmpeg);
+        Player = new PlayerServer(Previa);
         Conflicts = new ConflictBroker(info => EmitAsync("op.conflict", info));
         Files = new FileOperations(Conflicts.AskAsync, progress => EmitAsync("op.progress", progress));
         Paste = new PasteService(Probe, Transcode, Files, Settings);
         Thumbs = new ThumbnailService(Settings, Ffmpeg);
+        Arraste = new ArrasteService(this);
     }
 
-    public void Emit(string evt, object? data) => Bridge?.Emit(evt, data);
+    /// <summary>Abre uma janela nova. A primeira persiste posicao; as outras nascem deslocadas.</summary>
+    public Janela AbrirJanela(string? caminho = null, bool primaria = false)
+    {
+        var janela = new Janela(this, primaria, caminho);
+        _janelas.Add(janela);
+        janela.FormClosed += (_, _) =>
+        {
+            if (_janelas.Count(j => !j.IsDisposed) == 0)
+            {
+                UltimaJanelaFechada?.Invoke();
+            }
+        };
+        janela.Show();
+        return janela;
+    }
+
+    public event Action? UltimaJanelaFechada;
+
+    public void RemoverJanela(Janela janela) => _janelas.Remove(janela);
+
+    public async Task<CoreWebView2Environment> AmbienteWebViewAsync(string pastaDados)
+    {
+        if (_ambiente is not null)
+        {
+            return _ambiente;
+        }
+
+        _ambiente = await CoreWebView2Environment.CreateAsync(null, pastaDados).ConfigureAwait(true);
+        return _ambiente;
+    }
+
+    public void TrazerParaFrente(Janela janela)
+    {
+        try
+        {
+            janela.Activate();
+            Native.Win32.TrazerParaFrente(AppInfo.Nome);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Falha ao trazer janela para frente", ex);
+        }
+    }
+
+    /// <summary>Arraste entre janelas: copia ou move os itens para a pasta da janela alvo.</summary>
+    public async Task EntregarArrasteAsync(
+        IReadOnlyList<string> caminhos,
+        string destino,
+        bool copiar,
+        Janela alvo)
+    {
+        var opId = $"arraste-{Guid.NewGuid():N}";
+        var origem = JanelaDoContexto ?? JanelaAtiva;
+
+        try
+        {
+            var resultado = copiar
+                ? await Files.CopyAsync(caminhos, destino, opId, CancellationToken.None).ConfigureAwait(false)
+                : await Files.MoveAsync(caminhos, destino, opId, CancellationToken.None).ConfigureAwait(false);
+
+            alvo.Enviar("dir.refresh", new { caminho = destino });
+            origem?.Enviar("dir.refresh", new { caminho = origem.PastaAtual });
+
+            if (resultado.Erros.Count > 0)
+            {
+                alvo.Enviar("arraste.erro", new { mensagem = resultado.Erros[0] });
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Falha ao entregar arraste", ex);
+            alvo.Enviar("arraste.erro", new { mensagem = ex.Message });
+        }
+    }
+
+    public void Emit(string evt, object? data)
+    {
+        if (ContextoAtual.Value is { } janela)
+        {
+            janela.Enviar(evt, data);
+            return;
+        }
+
+        EmitTodos(evt, data);
+    }
+
+    public void EmitTodos(string evt, object? data)
+    {
+        foreach (var janela in _janelas.ToArray())
+        {
+            janela.Enviar(evt, data);
+        }
+    }
+
+    public void EmitPara(Janela janela, string evt, object? data) => janela.Enviar(evt, data);
 
     public Task EmitAsync(string evt, object? data)
     {

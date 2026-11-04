@@ -4,6 +4,27 @@ namespace CVExplorer.Host.Native;
 
 internal static class Win32
 {
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Ponto { public int X; public int Y; }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out Ponto ponto);
+
+    /// <summary>Posicao do cursor em pixels fisicos da tela (independe da escala).</summary>
+    public static bool CursorPos(out int x, out int y)
+    {
+        if (GetCursorPos(out var ponto))
+        {
+            x = ponto.X;
+            y = ponto.Y;
+            return true;
+        }
+
+        x = 0;
+        y = 0;
+        return false;
+    }
+
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern bool GetDiskFreeSpaceEx(
         string lpDirectoryName,

@@ -1,4 +1,5 @@
-﻿using System.Drawing;
+using System.ComponentModel;
+using System.Drawing;
 using System.Runtime.InteropServices;
 using CVExplorer.Host.Ipc;
 using Microsoft.Web.WebView2.Core;
@@ -6,24 +7,41 @@ using Microsoft.Web.WebView2.WinForms;
 
 namespace CVExplorer.Host;
 
-public sealed class MainForm : Form
+/// <summary>
+/// Uma janela = um WebView2 + uma ponte IPC. Todas compartilham os mesmos servicos
+/// (config, miniaturas, ffmpeg, conflitos), entao abrir outra janela e barato.
+/// </summary>
+public sealed class Janela : Form
 {
-    private readonly AppHost _host = new();
+    private readonly AppHost _host;
     private readonly WebView2 _web = new();
+    private readonly List<Action> _aoFechar = new();
+    private IpcBridge? _bridge;
     private bool _interfacePronta;
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
 
-    public MainForm()
+    public Janela(AppHost host, bool primaria, string? caminhoInicial)
     {
+        _host = host;
+        Primaria = primaria;
+        CaminhoInicial = caminhoInicial;
+
         Text = AppInfo.Nome;
         MinimumSize = new Size(940, 600);
         BackColor = Color.FromArgb(14, 15, 17);
         StartPosition = FormStartPosition.Manual;
         DoubleBuffered = true;
 
-        RestaurarJanela();
+        if (primaria)
+        {
+            RestaurarJanela();
+        }
+        else
+        {
+            PosicionarDeslocada();
+        }
 
         _web.Dock = DockStyle.Fill;
         // AllowExternalDrop=false faz o controle entregar o drop do Explorer para o app,
@@ -42,6 +60,7 @@ public sealed class MainForm : Form
             if (e.Data?.GetData(DataFormats.FileDrop) is string[] caminhos)
             {
                 Emitir("os.drop", new { caminhos });
+                _host.TrazerParaFrente(this);
             }
         };
 
@@ -52,7 +71,71 @@ public sealed class MainForm : Form
             AplicarBarraTituloEscura();
             await IniciarAsync();
         };
-        FormClosing += (_, _) => SalvarJanela();
+
+        FormClosing += (_, _) =>
+        {
+            foreach (var acao in _aoFechar)
+            {
+                try
+                {
+                    acao();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error("Falha ao limpar recursos da janela", ex);
+                }
+            }
+
+            if (Primaria)
+            {
+                SalvarJanela();
+            }
+
+            _host.RemoverJanela(this);
+        };
+
+        Activated += (_, _) => _host.JanelaAtiva = this;
+    }
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public string Id { get; } = Guid.NewGuid().ToString("N")[..8];
+
+    /// <summary>A janela principal guarda posicao/tamanho na configuracao.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool Primaria { get; }
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public string? CaminhoInicial { get; set; }
+
+    /// <summary>Pasta exibida agora: e o destino de um arraste vindo de outra janela.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public string? PastaAtual { get; set; }
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool Pronta => _interfacePronta;
+
+    public bool ContemPonto(int x, int y) => Bounds.Contains(x, y);
+
+    public void FocarInterface()
+    {
+        if (_interfacePronta)
+        {
+            _web.Focus();
+        }
+    }
+
+    public void Avisar(string evt, object? data) => Emitir(evt, data);
+
+    /// <summary>Registra algo para executar quando esta janela fechar (ex.: matar o ffmpeg).</summary>
+    public void AoFechar(Action acao) => _aoFechar.Add(acao);
+
+    /// <summary>Entrega um evento para a interface desta janela (se ela ja carregou).</summary>
+    public void Enviar(string evt, object? data)
+    {
+        if (_interfacePronta)
+        {
+            _bridge?.Emit(evt, data);
+        }
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -68,7 +151,9 @@ public sealed class MainForm : Form
             var pastaDados = Path.Combine(AppPaths.Root, "webview2");
             Directory.CreateDirectory(pastaDados);
 
-            var ambiente = await CoreWebView2Environment.CreateAsync(null, pastaDados);
+            // Cada janela precisa do seu proprio ambiente? Nao: o ambiente pode ser
+            // compartilhado e economiza memoria e processos.
+            var ambiente = await _host.AmbienteWebViewAsync(pastaDados).ConfigureAwait(true);
             await _web.EnsureCoreWebView2Async(ambiente);
 
             var core = _web.CoreWebView2;
@@ -88,7 +173,11 @@ public sealed class MainForm : Form
             core.SetVirtualHostNameToFolderMapping(
                 AppPaths.ThumbsVirtualHost, AppPaths.ThumbsDir, CoreWebView2HostResourceAccessKind.Allow);
 
-            _host.Bridge = new IpcBridge(core, Commands.Build(_host), _host.Cancels);
+            _bridge = new IpcBridge(
+                core,
+                _host.Routes,
+                _host.Cancels,
+                () => _host.DefinirContexto(this));
 
             core.NavigationCompleted += async (_, _) =>
             {
@@ -121,7 +210,7 @@ public sealed class MainForm : Form
 
     private async Task VerificarAtualizacoesAsync()
     {
-        if (!_host.Settings.VerificarAtualizacoes)
+        if (!_host.Settings.VerificarAtualizacoes || !Primaria)
         {
             return;
         }
@@ -149,13 +238,7 @@ public sealed class MainForm : Form
         }
     }
 
-    private void Emitir(string evt, object? data)
-    {
-        if (_interfacePronta)
-        {
-            _host.Emit(evt, data);
-        }
-    }
+    private void Emitir(string evt, object? data) => Enviar(evt, data);
 
     private void RestaurarJanela()
     {
@@ -173,6 +256,21 @@ public sealed class MainForm : Form
         {
             WindowState = FormWindowState.Maximized;
         }
+    }
+
+    /// <summary>Janelas novas nascem deslocadas para nao esconder a anterior.</summary>
+    private void PosicionarDeslocada()
+    {
+        var referencia = _host.Janelas.FirstOrDefault(j => !j.IsDisposed);
+        var baseRet = referencia?.Bounds ?? new Rectangle(120, 90, 1280, 820);
+        var area = Screen.FromPoint(new Point(baseRet.X + 40, baseRet.Y + 40)).WorkingArea;
+
+        var largura = referencia?.Width ?? baseRet.Width;
+        var altura = referencia?.Height ?? baseRet.Height;
+        var x = Math.Min(area.Right - largura, baseRet.X + 48);
+        var y = Math.Min(area.Bottom - altura, baseRet.Y + 48);
+
+        Bounds = new Rectangle(x, y, largura, altura);
     }
 
     private void SalvarJanela()

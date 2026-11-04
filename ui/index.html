@@ -50,6 +50,9 @@
       <button id="btn-visualizacao" class="icon-btn" data-i18n-title="acoes.visualizacao">
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
       </button>
+      <button id="btn-nova-janela" class="icon-btn" data-i18n-title="acoes.novaJanela">
+        <svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M8 3h13v12"/></svg>
+      </button>
       <button id="btn-novo" class="icon-btn" data-i18n-title="acoes.novo">
         <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
       </button>
@@ -90,6 +93,8 @@
       </div>
     </main>
 
+    <div id="divisor-preview" class="divisor-preview" hidden></div>
+
     <aside id="preview" class="preview" hidden>
       <header class="preview-header">
         <span id="preview-nome" class="preview-nome"></span>
@@ -109,8 +114,14 @@
     <span id="status-versao" class="status-item muted"></span>
   </footer>
 
-  <div id="toasts" class="toasts"></div>
-  <div id="progressos" class="progressos"></div>
+  <div id="arraste-alvo" class="arraste-alvo" hidden>
+    <div class="arraste-caixa">
+      <div class="arraste-texto"></div>
+      <div class="arraste-pasta"></div>
+    </div>
+  </div>
+
+  <div id="toasts" class="toasts"></div>  <div id="progressos" class="progressos"></div>
   <div id="menu-contexto" class="menu-contexto" hidden></div>
   <div id="modal-raiz" class="modal-raiz" hidden></div>
 

@@ -45,6 +45,7 @@ public static class Commands
             },
             repositorioConfigurado = AppInfo.RepositorioConfigurado,
             raizes = host.Settings.Raizes,
+            janela = host.JanelaDoContexto?.Id,
         }));
 
         Add("settings.get", (_, _) => Task.FromResult<object?>(host.Settings));
@@ -65,7 +66,55 @@ public static class Commands
         // Guarda a ultima pasta so em memoria: a gravacao em disco acontece ao fechar a janela.
         Add("app.ultimaPasta", (args, _) =>
         {
-            host.Settings.UltimaPasta = Str(args, "caminho");
+            var caminho = Str(args, "caminho");
+            host.Settings.UltimaPasta = caminho;
+
+            // Cada janela tem a sua pasta atual: e o destino do arraste entre janelas.
+            if (host.JanelaDoContexto is { } janela)
+            {
+                janela.PastaAtual = caminho;
+            }
+
+            return Task.FromResult<object?>(new { ok = true });
+        });
+
+        // Pasta com que esta janela deve abrir (janela nova ja nasce no lugar certo).
+        Add("app.inicio", (_, _) => Task.FromResult<object?>(new
+        {
+            caminho = host.JanelaDoContexto?.CaminhoInicial,
+            janela = host.JanelaDoContexto?.Id,
+        }));
+
+        Add("app.novaJanela", (args, _) =>
+        {
+            var caminho = Str(args, "caminho");
+            var janela = host.AbrirJanela(string.IsNullOrWhiteSpace(caminho) ? host.JanelaDoContexto?.PastaAtual : caminho);
+            return Task.FromResult<object?>(new { ok = true, janela = janela.Id });
+        });
+
+        // ---------- arraste entre janelas ----------
+
+        Add("arraste.iniciar", (args, _) =>
+        {
+            var origem = host.JanelaDoContexto;
+            if (origem is null)
+            {
+                return Task.FromResult<object?>(new { ok = false });
+            }
+
+            host.Arraste.Iniciar(origem, StrArray(args, "caminhos"), Bool(args, "copiar", false));
+            return Task.FromResult<object?>(new { ok = true });
+        });
+
+        Add("arraste.soltar", async (_, ct) =>
+        {
+            var entregue = await host.Arraste.SoltarAsync().ConfigureAwait(false);
+            return new { ok = true, entregue };
+        }, operacao: true);
+
+        Add("arraste.cancelar", (_, _) =>
+        {
+            host.Arraste.Cancelar();
             return Task.FromResult<object?>(new { ok = true });
         });
 
@@ -444,6 +493,52 @@ public static class Commands
             };
         }, operacao: true);
 
+        // Player embutido: o ffmpeg decodifica e entrega o fluxo H.264 direto no <video>.
+        // Nada e gravado: abrir e instantaneo, e o scrub reabre o fluxo no segundo pedido.
+        Add("media.play", async (args, ct) =>
+        {
+            var caminho = Str(args, "caminho");
+            var inicio = Num(args, "inicio", 0);
+
+            if (!File.Exists(caminho))
+            {
+                return new { ok = false, erro = "Arquivo nao encontrado." };
+            }
+
+            var info = await host.Probe.InspectAsync(caminho, ct).ConfigureAwait(false);
+            if (info is null)
+            {
+                return new { ok = false, erro = "Nao foi possivel ler o video (ffmpeg ausente?)." };
+            }
+
+            var fluxo = host.Previa.Abrir(info, inicio);
+            if (fluxo.Erro is not null || fluxo.Saida is null)
+            {
+                return new { ok = false, erro = fluxo.Erro ?? "Falha ao iniciar o player." };
+            }
+
+            host.Player.GarantirUrlBase();
+
+            // A janela fecha -> o processo morre junto.
+            host.JanelaDoContexto?.AoFechar(() => host.Previa.Fechar(fluxo.Id));
+
+            return new
+            {
+                ok = true,
+                id = fluxo.Id,
+                url = host.Player.UrlDoFluxo(fluxo.Id),
+                inicio,
+                duracao = info.DuracaoSegundos,
+                encoder = fluxo.Encoder,
+            };
+        }, operacao: true);
+
+        Add("media.playFechar", (args, _) =>
+        {
+            host.Previa.Fechar(Str(args, "id"));
+            return Task.FromResult<object?>(new { ok = true });
+        });
+
         // Colar = transcodificar no destino. O original nunca e copiado para o projeto.
         Add("media.paste", async (args, ct) =>
         {
@@ -678,6 +773,19 @@ public static class Commands
     private static long Long(JsonElement args, string name, long def)
     {
         if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty(name, out var el) && el.TryGetInt64(out var v))
+        {
+            return v;
+        }
+
+        return def;
+    }
+
+    private static double Num(JsonElement args, string name, double def)
+    {
+        if (args.ValueKind == JsonValueKind.Object
+            && args.TryGetProperty(name, out var el)
+            && el.ValueKind == JsonValueKind.Number
+            && el.TryGetDouble(out var v))
         {
             return v;
         }

@@ -4,22 +4,34 @@ import * as fmt from './format.js';
 import * as thumbs from './thumbnails.js';
 
 const painel = document.getElementById('preview');
+const divisor = document.getElementById('divisor-preview');
 const nomeEl = document.getElementById('preview-nome');
 const corpoEl = document.getElementById('preview-corpo');
 const metaEl = document.getElementById('preview-meta');
 
 const IMAGENS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif', 'tif', 'tiff', 'psd', 'psb', 'exr', 'tga', 'dpx'];
 
+const LARGURA_PADRAO = 320;
+const LARGURA_MINIMA = 240;
+
 export function fechar() {
   painel.hidden = true;
+  divisor.hidden = true;
+  fecharJogador();
+  corpoEl.classList.remove('com-player');
   corpoEl.replaceChildren();
   metaEl.replaceChildren();
+}
+
+function abrir() {
+  painel.hidden = false;
+  divisor.hidden = false;
 }
 
 export async function mostrar(items) {
   if (items.length !== 1) {
     if (items.length > 1) {
-      painel.hidden = false;
+      abrir();
       nomeEl.textContent = `${items.length} itens`;
       corpoEl.replaceChildren(placeholder(t('preview.somenteUm')));
       metaEl.replaceChildren();
@@ -35,9 +47,11 @@ export async function mostrar(items) {
   const ehPasta = item.Pasta ?? item.pasta;
   const ext = fmt.extensao(nome);
 
-  painel.hidden = false;
+  abrir();
   nomeEl.textContent = nome;
   nomeEl.title = caminho;
+  fecharJogador();
+  corpoEl.classList.remove('com-player');
   corpoEl.replaceChildren();
   metaEl.replaceChildren();
 
@@ -80,38 +94,202 @@ async function mostrarImagem(caminho, nome) {
 }
 
 async function mostrarVideo(item, caminho, nome) {
-  // O poster vem da mesma cadeia de miniaturas (rápida e normalmente já em cache).
-  const emCache = thumbs.emCache(item);
-  const aplicar = (url) => {
-    const img = document.createElement('img');
-    img.src = url;
-    img.alt = nome;
-    corpoEl.replaceChildren(img);
+  fecharJogador();
+
+  const poster = thumbs.emCache(item);
+
+  const container = document.createElement('div');
+  container.className = 'player';
+  corpoEl.classList.add('com-player');
+
+  const video = document.createElement('video');
+  video.preload = 'auto';
+  video.playsInline = true;
+  if (poster) video.poster = poster;
+
+  const controles = document.createElement('div');
+  controles.className = 'player-controles';
+
+  const botaoTocar = document.createElement('button');
+  botaoTocar.className = 'player-btn';
+  botaoTocar.title = t('player.tocar');
+
+  const barra = document.createElement('input');
+  barra.type = 'range';
+  barra.className = 'player-barra';
+  barra.min = '0';
+  barra.max = '1000';
+  barra.value = '0';
+  barra.step = '1';
+
+  const tempo = document.createElement('span');
+  tempo.className = 'player-tempo';
+  tempo.textContent = '00:00 / 00:00';
+
+  const externo = document.createElement('button');
+  externo.className = 'player-btn';
+  externo.title = t('preview.abrirPlayer');
+  externo.textContent = '↗';
+  externo.addEventListener('click', () => call('fs.open', { caminho }).catch(() => {}));
+
+  controles.append(botaoTocar, barra, tempo, externo);
+  container.append(video, controles);
+  corpoEl.replaceChildren(container);
+
+  jogador = {
+    caminho,
+    video,
+    id: null,
+    inicio: 0,
+    duracao: 0,
+    tocando: false,
+    botao: botaoTocar,
+    barra,
+    tempo,
   };
 
-  if (emCache) {
-    aplicar(emCache);
+  botaoTocar.addEventListener('click', () => {
+    if (video.paused) {
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+  });
+
+  video.addEventListener('play', () => atualizarBotao(true));
+  video.addEventListener('pause', () => atualizarBotao(false));
+  video.addEventListener('timeupdate', () => atualizarTempo());
+  video.addEventListener('error', () => {
+    corpoEl.replaceChildren(placeholder(t('preview.previaFalhou', { erro: 'fluxo de vídeo' })));
+    corpoEl.appendChild(botaoExterno(caminho));
+  });
+
+  // Soltar a barra reinicia o fluxo no ponto pedido (o stream é gerado sob demanda).
+  barra.addEventListener('change', async () => {
+    if (!jogador.duracao) return;
+    const alvo = (Number(barra.value) / 1000) * jogador.duracao;
+    await abrirFluxo(caminho, alvo, true);
+  });
+
+  mostrarCarregando(t('preview.iniciando'));
+  await abrirFluxo(caminho, 0, false);
+}
+
+let jogador = null;
+
+function atualizarBotao(tocando) {
+  if (!jogador) return;
+  jogador.tocando = tocando;
+  jogador.botao.textContent = tocando ? '❚❚' : '▶';
+  jogador.botao.title = tocando ? t('player.pausar') : t('player.tocar');
+}
+
+function atualizarTempo() {
+  if (!jogador?.video) return;
+  const total = jogador.duracao || 0;
+  const atual = Math.min(total, jogador.inicio + (jogador.video.currentTime || 0));
+  jogador.tempo.textContent = `${relogio(atual)} / ${relogio(total)}`;
+  if (total > 0) {
+    jogador.barra.value = String(Math.round((atual / total) * 1000));
+  }
+}
+
+function relogio(segundos) {
+  const s = Math.max(0, Math.floor(segundos || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const resto = s % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(resto).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+function mostrarCarregando(texto) {
+  const caixa = document.createElement('div');
+  caixa.className = 'previa-preparando';
+  const rotulo = document.createElement('div');
+  rotulo.className = 'placeholder';
+  rotulo.textContent = texto;
+  const spinner = document.createElement('div');
+  spinner.className = 'spinner';
+  caixa.append(spinner, rotulo);
+  if (jogador?.video) {
+    jogador.video.replaceWith(caixa);
+    caixa.dataset.substituto = 'video';
   } else {
-    thumbs.solicitar(item, 512, (url) => {
-      if (!painel.hidden) aplicar(url);
-    });
+    corpoEl.replaceChildren(caixa);
+  }
+}
+
+function restaurarVideo() {
+  if (!jogador?.video) return;
+  const substituto = corpoEl.querySelector('.previa-preparando');
+  if (substituto) {
+    substituto.replaceWith(jogador.video.closest('.player') ?? jogador.video);
+  }
+}
+
+/** Pede ao host um fluxo novo (do zero ou a partir de um ponto) e liga no <video>. */
+async function abrirFluxo(caminho, inicio, tocar) {
+  if (jogador?.id) {
+    call('media.playFechar', { id: jogador.id }).catch(() => {});
+    jogador.id = null;
   }
 
+  const jaTemPlayer = Boolean(jogador?.video?.isConnected);
+  if (!jaTemPlayer && !jogador?.video) mostrarCarregando(t('preview.iniciando'));
+
+  let resposta;
+  try {
+    resposta = await call('media.play', { caminho, inicio });
+  } catch (erro) {
+    corpoEl.replaceChildren(placeholder(t('preview.previaFalhou', { erro: erro.message })));
+    corpoEl.appendChild(botaoExterno(caminho));
+    return;
+  }
+
+  if (!resposta?.ok) {
+    corpoEl.replaceChildren(placeholder(t('preview.previaFalhou', { erro: resposta?.erro ?? '—' })));
+    corpoEl.appendChild(botaoExterno(caminho));
+    return;
+  }
+
+  jogador.id = resposta.id;
+  jogador.inicio = inicio;
+  jogador.duracao = resposta.duracao;
+  restaurarVideo();
+
+  const video = jogador.video;
+  video.src = resposta.url;
+  video.load();
+  atualizarTempo();
+
+  video.addEventListener('loadeddata', () => {
+    if (tocar) video.play().catch(() => {});
+  }, { once: true });
+}
+
+function fecharJogador() {
+  if (jogador?.id) {
+    call('media.playFechar', { id: jogador.id }).catch(() => {});
+  }
+
+  if (jogador?.video) {
+    jogador.video.pause();
+    jogador.video.removeAttribute('src');
+    jogador.video.load();
+  }
+
+  jogador = null;
+}
+
+function botaoExterno(caminho) {
   const abrir = document.createElement('button');
   abrir.className = 'btn';
   abrir.textContent = t('preview.abrirPlayer');
   abrir.style.marginTop = '10px';
   abrir.addEventListener('click', () => call('fs.open', { caminho }).catch(() => {}));
-
-  const rodapePreview = document.createElement('div');
-  rodapePreview.style.display = 'flex';
-  rodapePreview.style.flexDirection = 'column';
-  rodapePreview.style.alignItems = 'center';
-  rodapePreview.append(abrir);
-
-  setTimeout(() => {
-    if (!painel.hidden) corpoEl.appendChild(rodapePreview);
-  }, 0);
+  return abrir;
 }
 
 function placeholder(texto) {
@@ -164,4 +342,69 @@ async function preencherMeta(item, caminho, ext) {
 
 export function iniciarPreview() {
   document.getElementById('preview-fechar').addEventListener('click', fechar);
+  iniciarDivisor();
+}
+
+// ---------- largura da prévia ----------
+
+function larguraMaxima() {
+  return Math.max(LARGURA_MINIMA, window.innerWidth - 520);
+}
+
+function aplicarLargura(valor) {
+  const largura = Math.min(larguraMaxima(), Math.max(LARGURA_MINIMA, valor));
+  document.documentElement.style.setProperty('--w-preview', `${Math.round(largura)}px`);
+  return largura;
+}
+
+function iniciarDivisor() {
+  try {
+    const salva = Number(localStorage.getItem('cvexplorer:previewLargura'));
+    if (Number.isFinite(salva) && salva > 0) {
+      aplicarLargura(salva);
+    }
+  } catch {
+    // preferencia corrompida: fica no padrao
+  }
+
+  divisor.addEventListener('pointerdown', (evento) => {
+    if (evento.button !== 0) return;
+    evento.preventDefault();
+    evento.stopPropagation();
+
+    const inicioX = evento.clientX;
+    const larguraInicial = painel.getBoundingClientRect().width;
+    let atual = larguraInicial;
+    let arrastou = false;
+
+    try { divisor.setPointerCapture(evento.pointerId); } catch { /* ponteiro sintetico */ }
+    document.body.classList.add('redimensionando-preview');
+
+    const mover = (e) => {
+      const delta = inicioX - e.clientX;
+      if (!arrastou && Math.abs(delta) < 2) return;
+      arrastou = true;
+      atual = aplicarLargura(larguraInicial + delta);
+    };
+
+    const soltar = () => {
+      divisor.removeEventListener('pointermove', mover);
+      divisor.removeEventListener('pointerup', soltar);
+      divisor.removeEventListener('pointercancel', soltar);
+      document.body.classList.remove('redimensionando-preview');
+      try { divisor.releasePointerCapture(evento.pointerId); } catch { /* ja liberado */ }
+      if (arrastou) {
+        localStorage.setItem('cvexplorer:previewLargura', String(Math.round(atual)));
+      }
+    };
+
+    divisor.addEventListener('pointermove', mover);
+    divisor.addEventListener('pointerup', soltar);
+    divisor.addEventListener('pointercancel', soltar);
+  });
+
+  divisor.addEventListener('dblclick', () => {
+    localStorage.setItem('cvexplorer:previewLargura', String(LARGURA_PADRAO));
+    aplicarLargura(LARGURA_PADRAO);
+  });
 }

@@ -51,13 +51,25 @@ async function iniciar() {
   document.addEventListener('recarregar', () => explorer.recarregar());
   document.addEventListener('navegar', (evento) => explorer.navegar(evento.detail));
 
-  // Ctrl+N cria projeto; Ctrl+, abre configurações (atalhos de app).
+  document.getElementById('btn-nova-janela').addEventListener('click', async () => {
+    await call('app.novaJanela', { caminho: state.caminho }).catch((erro) => {
+      ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
+    });
+  });
+
+  // Ctrl+N abre outra janela (como o Explorer); Ctrl+Shift+N cria projeto.
   document.addEventListener('keydown', (evento) => {
     if (!evento.ctrlKey) return;
+
     if (evento.key.toLowerCase() === 'n') {
       evento.preventDefault();
-      document.getElementById('btn-novo').click();
+      if (evento.shiftKey) {
+        document.getElementById('btn-novo').click();
+      } else {
+        document.getElementById('btn-nova-janela').click();
+      }
     }
+
     if (evento.key === ',') {
       evento.preventDefault();
       document.getElementById('btn-config').click();
@@ -78,6 +90,17 @@ async function iniciar() {
 }
 
 async function caminhoInicial(config) {
+  // Janela nova ja nasce na pasta pedida (ou na pasta da janela de origem).
+  try {
+    const inicio = await call('app.inicio');
+    if (inicio?.caminho) {
+      const stat = await call('fs.stat', { caminho: inicio.caminho });
+      if (stat?.pasta) return inicio.caminho;
+    }
+  } catch {
+    // sem pasta inicial definida
+  }
+
   if (config.UltimaPasta) {
     try {
       const stat = await call('fs.stat', { caminho: config.UltimaPasta });

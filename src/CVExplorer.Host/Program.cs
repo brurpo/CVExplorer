@@ -12,7 +12,8 @@ internal static class Program
         VelopackApp.Build().Run();
 
         // Uma instancia por vez: duas copias competindo pelo cache e pela config
-        // causariam miniaturas e configuracoes inconsistentes.
+        // causariam miniaturas e configuracoes inconsistentes. Janelas multiplas
+        // acontecem dentro do mesmo processo.
         using var instancia = new Mutex(initiallyOwned: true, "CVExplorer.SingleInstance", out var primeira);
         if (!primeira)
         {
@@ -27,7 +28,16 @@ internal static class Program
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             Log.Error("UnhandledException", e.ExceptionObject as Exception);
 
-        using var form = new MainForm();
-        Application.Run(form);
+        var host = new AppHost();
+        var contexto = new ApplicationContext();
+
+        // Fecha o app quando a ultima janela for fechada.
+        host.UltimaJanelaFechada += contexto.ExitThread;
+
+        // Pasta opcional na linha de comando (usada pelo "abrir com").
+        var inicial = args.FirstOrDefault(a => !a.StartsWith('-') && Directory.Exists(a));
+        host.AbrirJanela(inicial, primaria: true);
+
+        Application.Run(contexto);
     }
 }

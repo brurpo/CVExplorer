@@ -77,13 +77,24 @@ compila, empacota com Velopack e publica a release. O app verifica essa release 
 - **Type-ahead**: comece a digitar e a seleção pula para o item que combina (com indicador na tela).
 - **Colunas ordenáveis**: clique em *Nome*, *Tamanho* ou *Modificado* para ordenar; clique de novo
   inverte. A escolha é lembrada.
-- **Colunas redimensionáveis**: arraste o divisor entre as colunas do cabeçalho.
+- **Colunas redimensionáveis**: as **três** colunas têm alça — arraste a divisória no cabeçalho
+  (inclusive *Nome*, que é a mais larga). Duplo clique na alça volta ao padrão. O cabeçalho
+  compensa a barra de rolagem (`--sbw`), então a divisória fica exatamente sobre a coluna dos itens.
+- **Janelas múltiplas**: `Ctrl+N` (ou o ícone no topo) abre outra janela na pasta atual, com
+  histórico e seleção independentes. Configuração, miniaturas e projetos são compartilhados.
+- **Arrastar entre janelas**: arraste itens de uma janela e solte em outra — a janela de destino
+  mostra *"Solte para mover aqui"* (ou *copiar*, com `Ctrl`) e a operação roda com progresso.
+  Também move/copia para uma pasta solta dentro da mesma janela. Como cada WebView2 captura o
+  mouse, quem acompanha o cursor é o host (`GetCursorPos`), não o navegador.
 - Navegação por migalhas, histórico, teclado (`Enter`, `Backspace`, `F2`, `Delete`, setas, `Ctrl+A`).
 - Copiar / recortar / colar, arrastar do Explorer, conflitos com decisão explícita
   (*substituir / manter ambos / pular / cancelar*, com "aplicar a todos").
 - Cópia progressiva com cancelamento; nomes nunca colidem (`arquivo (2).ext`).
 - Exclusão vai para a **Lixeira**.
-- Pré-visualização lateral com imagem em tamanho real (PSD, EXR, TIFF, SVG…), pôster de vídeo e metadados.
+- **Pré-visualização lateral** com imagem em tamanho real (PSD, EXR, TIFF, SVG…), player de vídeo
+  e metadados. A largura do painel é arrastável (divisória à esquerda; duplo clique volta ao padrão).
+- Escalas de Windows são respeitadas: o app é *per monitor v2*, então arraste de coluna, divisória
+  e cursor usam as mesmas unidades (px de CSS) em 100%, 150% ou 200%.
 
 ### Busca
 - Busca **paralela** (workers configuráveis) — pensada para latência de rede (SMB), não só disco local.
@@ -119,6 +130,25 @@ destino e tamanho estimado. "Colar original" copia o arquivo como está (sem per
 A caixa *Não perguntar de novo* grava a escolha daquele momento em `config.json`
 (`PerguntarAntesDeConverter`); a opção pode ser reativada em **Configurações**. Arquivos que já
 estão em codec de edição (ProRes, DNxHR, CineForm…) não geram pergunta: são sempre copiados.
+
+### Player embutido (prévia de vídeo)
+
+O `<video>` do WebView2 é Chromium: não abre MXF, ProRes, DNxHR, R3D nem a maioria dos formatos de
+câmera. E o player do Windows também não — é justamente o motivo de a prévia falhar. Então o vídeo
+é **tocado pelo ffmpeg** e entregue ao `<video>` como fluxo H.264 fragmentado, por HTTP em
+`127.0.0.1` (loopback, com token aleatório na URL):
+
+- **Nada é gravado em disco** e nada é esperado: o ffmpeg começa a decodificar e o player toca em
+  ~1 segundo, mesmo em arquivo de 300 MB.
+- **Scrub** reinicia o ffmpeg no segundo pedido (`-ss` antes de `-i`, busca por keyframe) e o fluxo
+  novo entra no mesmo `<video>` (≈2 s). A barra de tempo usa a duração real do `ffprobe`.
+- Controles próprios (play/pause, linha do tempo, tempo, abrir no player externo) porque um fluxo
+  contínuo não tem duração de arquivo.
+- O processo do ffmpeg morre ao trocar de arquivo, ao fechar a prévia e ao fechar a janela.
+
+Encoder: o primeiro H.264 disponível no ffmpeg do usuário (`libx264` → `h264_nvenc` → `h264_qsv` →
+`h264_amf` → `h264_mf` → `libopenh264`), cada um com o **seu** preset — passar `-preset speed` para
+NVENC, por exemplo, faz o encoder recusar abrir o fluxo, e aí o app tenta o próximo.
 
 ### Por que o arquivo cresce (e como evitar)
 
