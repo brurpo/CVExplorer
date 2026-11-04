@@ -485,10 +485,10 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
 
 .row-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-icone { display: grid; place-items: center; color: var(--muted); }
-.row-icone svg { width: 16px; height: 16px; }
+.row-icone svg { width: 17px; height: 17px; }
 .row-icone .icone-tipo {
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
   object-fit: contain;
   opacity: 0.85;
 }
