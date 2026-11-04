@@ -153,6 +153,14 @@ export function menuContexto(x, y, itens) {
   el.replaceChildren();
 
   for (const item of itens) {
+    if (item.cabecalho) {
+      const ch = document.createElement('div');
+      ch.className = 'menu-cabecalho';
+      ch.textContent = item.cabecalho;
+      el.appendChild(ch);
+      continue;
+    }
+
     if (item.separador) {
       const sep = document.createElement('div');
       sep.className = 'menu-sep';

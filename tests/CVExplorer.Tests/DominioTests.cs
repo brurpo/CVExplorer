@@ -17,14 +17,14 @@ public sealed class PastaTemporaria : IDisposable
 
     public string CriarPasta(string relativa)
     {
-        var caminho = Path.Combine(Caminho, relativa);
+        var caminho = Path.GetFullPath(Path.Combine(Caminho, relativa));
         Directory.CreateDirectory(caminho);
         return caminho;
     }
 
     public string CriarArquivo(string relativa, string conteudo = "x")
     {
-        var caminho = Path.Combine(Caminho, relativa);
+        var caminho = Path.GetFullPath(Path.Combine(Caminho, relativa));
         Directory.CreateDirectory(Path.GetDirectoryName(caminho)!);
         File.WriteAllText(caminho, conteudo);
         return caminho;
@@ -200,6 +200,57 @@ public sealed class ProjectServiceTests
         Assert.Contains(encontrados, p => p.Caminho == comMarcador && p.Registrado);
         Assert.Contains(encontrados, p => p.Caminho == porEstrutura && p.Origem == "estrutura");
         Assert.DoesNotContain(encontrados, p => p.Caminho == apenasPasta);
+    }
+
+    [Fact]
+    public void ResolveEncontraOProjetoSubindoPelosPais()
+    {
+        using var temp = new PastaTemporaria();
+        var servico = new ProjectService();
+
+        var raizProjeto = temp.CriarPasta("LUGAR ALEATORIO/PROJETO X");
+        servico.Register(raizProjeto, "PROJETO X");
+
+        var fundo = temp.CriarPasta("LUGAR ALEATORIO/PROJETO X/PACOTE_GRAFICO/ELEMENTOS/MOV");
+
+        var encontrado = servico.Resolve(fundo);
+
+        Assert.NotNull(encontrado);
+        Assert.Equal(raizProjeto, encontrado!.Caminho);
+        Assert.Equal("PROJETO X", encontrado.Nome);
+    }
+
+    [Fact]
+    public void ResolveDevolveNuloForaDeProjeto()
+    {
+        using var temp = new PastaTemporaria();
+        var servico = new ProjectService();
+        var solta = temp.CriarPasta("PASTA SEM MARCADOR/SUB");
+
+        Assert.Null(servico.Resolve(solta));
+    }
+
+    [Fact]
+    public void AtalhosListamSomenteAsPastasQueExistem()
+    {
+        using var temp = new PastaTemporaria();
+        var servico = new ProjectService();
+
+        var projeto = temp.CriarPasta("PROJETO");
+        servico.Register(projeto, "PROJETO");
+        Directory.CreateDirectory(Path.Combine(projeto, "PACOTE_GRAFICO", "PROJETOS", "AE"));
+        Directory.CreateDirectory(Path.Combine(projeto, "PACOTE_GRAFICO", "PROJETOS", "MAYA"));
+        Directory.CreateDirectory(Path.Combine(projeto, "PACOTE_GRAFICO", "ELEMENTOS", "MOV"));
+        Directory.CreateDirectory(Path.Combine(projeto, "PREVIEW"));
+
+        var atalhos = servico.Shortcuts(projeto);
+
+        Assert.Contains(atalhos, a => a.Caminho.EndsWith(Path.Combine("PROJETOS", "MAYA")) && a.Grupo == "PROJETOS");
+        Assert.Contains(atalhos, a => a.Caminho.EndsWith(Path.Combine("PROJETOS", "AE")));
+        Assert.Contains(atalhos, a => a.Nome == "PREVIEW");
+        // Nada de pastas inexistentes inventadas pela lista fixa.
+        Assert.DoesNotContain(atalhos, a => a.Nome == "BLENDER");
+        Assert.DoesNotContain(atalhos, a => a.Nome == "CHAMADAS");
     }
 }
 

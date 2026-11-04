@@ -43,6 +43,17 @@ public sealed class DetectedProject
     public bool Registrado => Marcador is not null;
 }
 
+/// <summary>Atalho para uma pasta dentro do projeto (ex.: PROJETOS/MAYA, PREVIEW).</summary>
+public sealed class ProjectShortcut
+{
+    public string Nome { get; set; } = string.Empty;
+
+    public string Caminho { get; set; } = string.Empty;
+
+    /// <summary>Agrupamento exibido no menu (nome da pasta-mae).</summary>
+    public string Grupo { get; set; } = string.Empty;
+}
+
 public sealed class ProjectService
 {
     private static readonly string[] EstruturaConhecida =
@@ -219,5 +230,135 @@ public sealed class ProjectService
 
         var hits = EstruturaConhecida.Count(names.Contains);
         return hits >= 2;
+    }
+
+    /// <summary>
+    /// Projetos ficam em qualquer lugar: o que vale e subir a partir da pasta atual
+    /// procurando o marcador. Chamado a cada navegacao para a interface saber onde esta.
+    /// </summary>
+    public DetectedProject? Resolve(string caminho, int maxNiveis = 40)
+    {
+        if (string.IsNullOrWhiteSpace(caminho))
+        {
+            return null;
+        }
+
+        var dir = Directory.Exists(caminho) ? caminho : Path.GetDirectoryName(caminho);
+        var nivel = 0;
+
+        while (!string.IsNullOrEmpty(dir) && nivel++ < maxNiveis)
+        {
+            var marcador = TryRead(dir);
+            if (marcador is not null)
+            {
+                return new DetectedProject
+                {
+                    Caminho = dir,
+                    Nome = marcador.Nome,
+                    Origem = "marcador",
+                    Marcador = marcador,
+                };
+            }
+
+            var pai = Path.GetDirectoryName(dir);
+            if (string.IsNullOrEmpty(pai) || string.Equals(pai, dir, StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            dir = pai;
+        }
+
+        return null;
+    }
+
+    private static readonly HashSet<string> Contenedores = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "PACOTE_GRAFICO", "CHAMADAS", "ABERTURA", "EDITORIA", "SAIDA", "REFERENCIAS",
+    };
+
+    /// <summary>
+    /// Pastas reais do projeto para virar atalho no menu do topo.
+    /// Le apenas o que existe: nada de lista fixa que nao corresponde ao disco.
+    /// </summary>
+    public List<ProjectShortcut> Shortcuts(string raiz, int maxItens = 28)
+    {
+        var lista = new List<ProjectShortcut>();
+        var vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var opcoes = new EnumerationOptions
+        {
+            IgnoreInaccessible = true,
+            AttributesToSkip = FileAttributes.System | FileAttributes.Hidden | FileAttributes.ReparsePoint,
+        };
+
+        void Adicionar(string grupo, DirectoryInfo dir)
+        {
+            if (lista.Count < maxItens && vistos.Add(dir.FullName))
+            {
+                lista.Add(new ProjectShortcut { Nome = dir.Name, Caminho = dir.FullName, Grupo = grupo });
+            }
+        }
+
+        try
+        {
+            var info = new DirectoryInfo(raiz);
+            if (!info.Exists)
+            {
+                return lista;
+            }
+
+            var topo = info.EnumerateDirectories("*", opcoes)
+                .OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            foreach (var dir in topo)
+            {
+                Adicionar("Projeto", dir);
+            }
+
+            foreach (var container in topo.Where(d => Contenedores.Contains(d.Name)))
+            {
+                List<DirectoryInfo> filhos;
+                try
+                {
+                    filhos = container.EnumerateDirectories("*", opcoes)
+                        .OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase)
+                        .ToList();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"Falha ao listar atalhos de {container.FullName}", ex);
+                    continue;
+                }
+
+                foreach (var filho in filhos)
+                {
+                    Adicionar(container.Name, filho);
+
+                    // Um nivel a mais apenas dentro de PROJETOS (AE, PSD, AI, BLENDER, MAYA...).
+                    if (filho.Name.Equals("PROJETOS", StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            foreach (var software in filho.EnumerateDirectories("*", opcoes)
+                                         .OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase))
+                            {
+                                Adicionar("PROJETOS", software);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Error($"Falha ao listar softwares em {filho.FullName}", ex);
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Falha ao montar atalhos de {raiz}", ex);
+        }
+
+        return lista;
     }
 }

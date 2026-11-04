@@ -1,6 +1,5 @@
 import { call } from './bridge.js';
 import { t } from './i18n.js';
-import * as fmt from './format.js';
 import * as ui from './ui.js';
 import * as dialogs from './dialogs.js';
 import { state } from './state.js';
@@ -10,19 +9,14 @@ let aoNavegarExterno = () => {};
 export function iniciarLateral({ aoNavegar }) {
   aoNavegarExterno = aoNavegar;
 
-  document.getElementById('btn-projetos-atualizar').addEventListener('click', () => detectarProjetos(true));
+  document.getElementById('btn-projetos-atualizar').addEventListener('click', () => carregarProjetos(true));
   document.getElementById('btn-add-raiz').addEventListener('click', adicionarRaiz);
-  document.addEventListener('projetos:atualizar', () => detectarProjetos(false));
+  document.addEventListener('projetos:atualizar', () => carregarProjetos(false));
 }
 
 export async function carregarTudo() {
   await carregarRaizes();
-  if ((state.config.Raizes ?? []).length > 0) {
-    await detectarProjetos(false);
-  } else {
-    const lista = document.getElementById('lista-projetos');
-    lista.replaceChildren(vazio(t('lateral.semProjetos')));
-  }
+  await carregarProjetos(false);
 }
 
 function vazio(texto) {
@@ -66,24 +60,32 @@ async function carregarRaizes() {
   }
 }
 
-async function detectarProjetos(mostrarToast) {
+/**
+ * Projetos ficam em pastas aleatorias: a lista junta os recentes (confiaveis)
+ * com o que for encontrado nas raizes configuradas, sem duplicar.
+ */
+async function carregarProjetos(mostrarToast) {
   const lista = document.getElementById('lista-projetos');
   const raizes = state.config.Raizes ?? [];
-
-  if (raizes.length === 0) {
-    lista.replaceChildren(vazio(t('lateral.semProjetos')));
-    return;
-  }
-
   lista.replaceChildren(vazio(t('lateral.detectando')));
 
   try {
-    const projetos = await call('project.detect', { raizes, profundidade: 2 });
+    const recentes = await call('project.recentes').catch(() => []);
+    const detectados = raizes.length
+      ? await call('project.detect', { raizes, profundidade: 2 }).catch(() => [])
+      : [];
+
+    const mapa = new Map();
+    for (const projeto of [...(recentes ?? []), ...(detectados ?? [])]) {
+      const chave = projeto.Caminho.toLowerCase();
+      if (!mapa.has(chave)) mapa.set(chave, projeto);
+    }
+
+    const projetos = [...mapa.values()];
     lista.replaceChildren();
 
-    if (!projetos?.length) {
+    if (projetos.length === 0) {
       lista.appendChild(vazio(t('lateral.semProjetos')));
-      if (mostrarToast) ui.toast(t('toast.semProjetos'), 'aviso');
       return;
     }
 
@@ -99,7 +101,9 @@ async function detectarProjetos(mostrarToast) {
 
       const detalhe = document.createElement('span');
       detalhe.className = 'detalhe';
-      detalhe.textContent = projeto.Registrado ? (projeto.Marcador?.Tipo ?? '') : t('lateral.naoRegistrado');
+      detalhe.textContent = projeto.Registrado
+        ? (projeto.Marcador?.Tipo ?? '')
+        : t('lateral.naoRegistrado');
 
       botao.append(rotulo, detalhe);
       botao.addEventListener('click', () => navegar(projeto.Caminho));
@@ -110,11 +114,18 @@ async function detectarProjetos(mostrarToast) {
           { rotulo: t('menu.abrirExplorer'), acao: () => call('fs.reveal', { caminho: projeto.Caminho }) },
           { separador: true },
           {
-            rotulo: t('menu.registrarProjeto'),
-            desabilitado: projeto.Registrado,
-            acao: async () => { await dialogs.registrarProjeto(projeto.Caminho); await detectarProjetos(false); },
+            rotulo: t('menu.criarPastasModelo'),
+            acao: () => dialogs.pastasModelo(projeto.Caminho, () => carregarProjetos(false)),
           },
-          { rotulo: t('menu.criarPastasModelo'), acao: () => dialogs.pastasModelo(projeto.Caminho, () => detectarProjetos(false)) },
+          {
+            rotulo: t('lateral.esquecer'),
+            desabilitado: !projeto.Registrado,
+            perigo: true,
+            acao: async () => {
+              await call('project.esquecerRecente', { caminho: projeto.Caminho }).catch(() => {});
+              await carregarProjetos(false);
+            },
+          },
         ]);
       });
 
@@ -143,7 +154,7 @@ async function adicionarRaiz() {
 
 function navegar(caminho) {
   aoNavegarExterno(caminho);
-  setTimeout(marcarAtivo, 60);
+  setTimeout(marcarAtivo, 80);
 }
 
 function marcarAtivo() {
@@ -152,17 +163,8 @@ function marcarAtivo() {
       && state.caminho.toLowerCase().startsWith(el.dataset.caminho.toLowerCase());
     el.classList.toggle('ativo', Boolean(ativo));
   }
-
-  const botao = document.querySelector(`.side-item[data-caminho="${CSS.escape(state.caminho ?? '')}"]`);
-  botao?.classList.add('ativo');
 }
 
 export function atualizarRaizes() {
   carregarRaizes();
 }
-
-export function formatarProjeto(projeto) {
-  return `${projeto.Nome}${projeto.Registrado ? '' : ` · ${t('lateral.naoRegistrado')}`}`;
-}
-
-export { fmt };

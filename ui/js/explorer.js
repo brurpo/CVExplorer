@@ -5,6 +5,7 @@ import * as ui from './ui.js';
 import * as thumbs from './thumbnails.js';
 import * as preview from './preview.js';
 import * as dialogs from './dialogs.js';
+import * as projetoAtual from './projetoAtual.js';
 import { icone } from './icons.js';
 import { state, itensAtuais, selecionados, limparSelecao } from './state.js';
 
@@ -148,6 +149,7 @@ export async function navegar(caminho, { historico = true } = {}) {
 
   atualizarBotoesNav();
   atualizarEspaco(caminho);
+  projetoAtual.atualizar(caminho).catch(() => {});
 
   call('app.ultimaPasta', { caminho }).catch(() => {});
 }

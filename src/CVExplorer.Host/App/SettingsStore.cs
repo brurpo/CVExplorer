@@ -47,6 +47,7 @@ public sealed class SettingsStore
             var c = _current;
             c.Idioma = settings.Idioma;
             c.Raizes = settings.Raizes ?? new List<string>();
+            c.ProjetosRecentes = settings.ProjetosRecentes ?? new List<string>();
             c.UltimaPasta = settings.UltimaPasta;
             c.TamanhoMiniatura = Math.Clamp(settings.TamanhoMiniatura, 96, 512);
             c.MostrarOcultos = settings.MostrarOcultos;

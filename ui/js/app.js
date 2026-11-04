@@ -2,6 +2,7 @@ import { call, on } from './bridge.js';
 import { carregarIdioma, t } from './i18n.js';
 import * as explorer from './explorer.js';
 import * as lateral from './projects.js';
+import * as projetoAtual from './projetoAtual.js';
 import * as dialogs from './dialogs.js';
 import * as preview from './preview.js';
 import * as ui from './ui.js';
@@ -28,6 +29,7 @@ async function iniciar() {
 
   explorer.iniciarExplorer();
   preview.iniciarPreview();
+  projetoAtual.iniciarProjetoAtual();
   lateral.iniciarLateral({ aoNavegar: (caminho) => explorer.navegar(caminho) });
 
   document.getElementById('btn-novo').addEventListener('click', () => {
@@ -114,4 +116,14 @@ function mostrarAtualizacao({ versao }) {
 iniciar().catch((erro) => {
   console.error(erro);
   document.body.innerHTML = `<div style="padding:24px;color:#e5484d;font-family:Consolas,monospace">${erro.message}</div>`;
+});
+
+// Sem devtools no dia a dia: erro de JS aparece como aviso em vez de sumir no console.
+window.addEventListener('unhandledrejection', (evento) => {
+  const mensagem = evento.reason?.message ?? String(evento.reason ?? '');
+  if (mensagem) ui.toast(`Erro: ${mensagem}`, 'erro', 7000);
+});
+
+window.addEventListener('error', (evento) => {
+  if (evento.message) ui.toast(`Erro: ${evento.message}`, 'erro', 7000);
 });

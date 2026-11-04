@@ -54,12 +54,19 @@ compila, empacota com Velopack e publica a release. O app verifica essa release 
 ### Projetos
 - **Marcador de raiz**: arquivo oculto `.cvproj` (JSON) na raiz do projeto. É o que define,
   sem ambiguidade, que a pasta é um projeto.
+- **Detecção pela pasta atual**: projetos ficam em qualquer lugar, então a cada navegação o app
+  sobe pelos pais procurando o `.cvproj`. O chip no topo mostra **em qual projeto você está**
+  (ou "Sem projeto") e, ao clicar, abre os atalhos das pastas reais daquele projeto —
+  `ELEMENTOS`, `PREVIEW` e `PROJETOS` → **AE, PSD, AI, BLENDER, MAYA**, `EDITORIA` → quadros.
+- **Recent projects**: os últimos 12 projetos visitados aparecem na lateral, então você não
+  depende de lembrar o caminho nem de configurar raízes.
+- **Definir projeto na pasta atual**: pelo próprio chip, sem mover nem criar nada — só grava o
+  marcador. Também funciona em pasta já existente com estrutura antiga.
 - **Criar projeto**: cria a pasta, grava o marcador e monta **somente as pastas marcadas**
   na árvore do modelo. Nada é duplicado, nada é sobrescrito — rodar duas vezes não cria nada novo.
-- **Registrar pasta existente**: adiciona o marcador sem mover nem criar nada.
-- **Auto-detecção**: varre as raízes configuradas procurando `.cvproj` e também estruturas
-  antigas reconhecíveis (`PACOTE_GRAFICO`, `CHAMADAS`, `ELEMENTOS`, `PROJETOS`…), marcadas
-  como *sem marcador*.
+- **Auto-detecção opcional**: raízes configuradas são varridas em busca de `.cvproj` e de
+  estruturas antigas reconhecíveis (`PACOTE_GRAFICO`, `CHAMADAS`, `ELEMENTOS`, `PROJETOS`…),
+  marcadas como *sem marcador*. É complemento, não requisito.
 - **Modelo editável**: a árvore padrão fica em `%LOCALAPPDATA%\CVExplorer\modelo-projeto.json`.
   O token `{QUADRO}` é substituído pelos nomes informados (ex.: `CHAMADA 01`, `CHAMADA 02`).
 

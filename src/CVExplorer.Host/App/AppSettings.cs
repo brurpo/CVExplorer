@@ -20,6 +20,12 @@ public sealed class AppSettings
     /// <summary>Raizes varridas na auto-deteccao de projetos.</summary>
     public List<string> Raizes { get; set; } = new();
 
+    /// <summary>
+    /// Projetos ja visitados, do mais recente para o mais antigo.
+    /// Projetos ficam em qualquer lugar, entao esta lista e o atalho confiavel.
+    /// </summary>
+    public List<string> ProjetosRecentes { get; set; } = new();
+
     public string? UltimaPasta { get; set; }
 
     public int TamanhoMiniatura { get; set; } = 256;

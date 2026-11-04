@@ -23,6 +23,7 @@
   "lateral.detectar": "Detectar projetos",
   "lateral.detectando": "Procurando projetos…",
   "lateral.naoRegistrado": "sem marcador",
+  "lateral.esquecer": "Remover da lista de recentes",
 
   "vazio.titulo": "Pasta vazia",
   "vazio.texto": "Arraste arquivos para cá ou cole com Ctrl+V.",
@@ -56,8 +57,7 @@
   "dialogo.fechar": "Fechar",
   "dialogo.escolher": "Escolher…",
 
-  "projeto.novoTitulo": "Novo projeto",
-  "projeto.novoDescricao": "Cria a pasta do projeto, o arquivo de marcação .cvproj e apenas as pastas que você marcar.",
+  "projeto.novoTitulo": "Novo projeto",  "projeto.novoDescricao": "Cria a pasta do projeto, o arquivo de marcação .cvproj e apenas as pastas que você marcar.",
   "projeto.nome": "Nome do projeto",
   "projeto.tipo": "Tipo",
   "projeto.cliente": "Cliente (opcional)",
@@ -77,6 +77,13 @@
   "projeto.pastasCriadas": "{n} pasta(s) criada(s), {existentes} já existiam.",
   "projeto.pastasTitulo": "Criar pastas do modelo",
   "projeto.pastasDescricao": "Marque só o que precisa. Nada é duplicado e pastas existentes são mantidas.",
+
+  "projeto.semProjeto": "Sem projeto",
+  "projeto.foraDeProjeto": "Esta pasta não está dentro de um projeto",
+  "projeto.definirAqui": "Definir esta pasta como projeto",
+  "projeto.criarAqui": "Criar projeto a partir desta pasta…",
+  "projeto.abrirRaizExplorer": "Abrir raiz do projeto no Explorer",
+  "projeto.raiz": "Ir para a raiz do projeto",
 
   "modelo.tudo": "Marcar tudo",
   "modelo.nada": "Desmarcar tudo",

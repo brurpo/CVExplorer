@@ -266,6 +266,30 @@ public static class Commands
         Add("project.info", (args, _) => Task.FromResult<object?>(
             host.Projects.TryRead(Str(args, "caminho"))));
 
+        // Deteccao a partir da pasta atual: sobe pelos pais ate achar o marcador.
+        Add("project.resolve", (args, _) =>
+        {
+            var encontrado = host.Projects.Resolve(Str(args, "caminho"));
+            if (encontrado is not null)
+            {
+                RegistrarRecente(host, encontrado.Caminho);
+            }
+
+            return Task.FromResult<object?>(encontrado);
+        });
+
+        Add("project.recentes", (_, _) => Task.FromResult<object?>(Recentes(host)));
+
+        Add("project.shortcuts", (args, _) => Task.FromResult<object?>(
+            host.Projects.Shortcuts(Str(args, "raiz"))));
+
+        Add("project.esquecerRecente", (args, _) =>
+        {
+            var caminho = Str(args, "caminho");
+            host.Settings.ProjetosRecentes.RemoveAll(p => string.Equals(p, caminho, StringComparison.OrdinalIgnoreCase));
+            return Task.FromResult<object?>(new { ok = true });
+        });
+
         Add("project.register", (args, _) =>
         {
             var caminho = Str(args, "caminho");
@@ -275,6 +299,7 @@ public static class Commands
                 NullableStr(args, "tipo"),
                 NullableStr(args, "cliente"));
 
+            RegistrarRecente(host, caminho);
             return Task.FromResult<object?>(marcador);
         });
 
@@ -511,6 +536,47 @@ public static class Commands
         erros = resultado.Erros,
         cancelado = resultado.Cancelado,
     };
+
+    private static void RegistrarRecente(AppHost host, string caminho)
+    {
+        var lista = host.Settings.ProjetosRecentes;
+        lista.RemoveAll(p => string.Equals(p, caminho, StringComparison.OrdinalIgnoreCase));
+        lista.Insert(0, caminho);
+
+        if (lista.Count > 12)
+        {
+            lista.RemoveRange(12, lista.Count - 12);
+        }
+    }
+
+    private static List<DetectedProject> Recentes(AppHost host)
+    {
+        var lista = new List<DetectedProject>();
+
+        foreach (var caminho in host.Settings.ProjetosRecentes.ToList())
+        {
+            if (!Directory.Exists(caminho))
+            {
+                continue;
+            }
+
+            var marcador = host.Projects.TryRead(caminho);
+            if (marcador is null)
+            {
+                continue;
+            }
+
+            lista.Add(new DetectedProject
+            {
+                Caminho = caminho,
+                Nome = marcador.Nome,
+                Origem = "marcador",
+                Marcador = marcador,
+            });
+        }
+
+        return lista;
+    }
 
     private static List<object> Roots(AppHost host)
     {
