@@ -58,6 +58,17 @@ compila, empacota com Velopack e publica a release. O app verifica essa release 
 
 ## Funcionalidades
 
+### Barra lateral
+
+No estilo do Explorer, sem lista de projetos:
+
+- **Favoritos**: pastas que você fixa com o `+` (ou remove pelo menu de contexto). Ficam em
+  `config.json` → `Favoritos`.
+- **Este Computador**: unidades com **letra**, rótulo, espaço livre e o **tipo** (`Rede` para
+  mapeadas/UNC, `Local` para fixas). Pastas adicionadas em *Raízes* aparecem como pastas.
+- Ícone de pasta em **amarelo**: com o acervo em tons de cinza, a pasta desaparecia no meio das
+  miniaturas coloridas.
+
 ### Projetos
 - **Marcador de raiz**: arquivo oculto `.cvproj` (JSON) na raiz do projeto. É o que define,
   sem ambiguidade, que a pasta é um projeto.
@@ -65,8 +76,9 @@ compila, empacota com Velopack e publica a release. O app verifica essa release 
   sobe pelos pais procurando o `.cvproj`. O chip no topo mostra **em qual projeto você está**
   (ou "Sem projeto") e, ao clicar, abre os atalhos das pastas reais daquele projeto —
   `ELEMENTOS`, `PREVIEW` e `PROJETOS` → **AE, PSD, AI, BLENDER, MAYA**, `EDITORIA` → quadros.
-- **Recent projects**: os últimos 12 projetos visitados aparecem na lateral, então você não
-  depende de lembrar o caminho nem de configurar raízes.
+- **Recent projects**: os últimos 12 projetos visitados ficam guardados e alimentam o chip do topo
+  quando você abre uma pasta sem marcador por perto. A barra lateral **não** lista projetos: com
+  milhares deles, uma lista ali vira ruído — quem responde "onde estou" é a detecção pela pasta atual.
 - **Definir projeto na pasta atual**: pelo próprio chip, sem mover nem criar nada — só grava o
   marcador. Também funciona em pasta já existente com estrutura antiga.
 - **Criar projeto**: cria a pasta, grava o marcador e monta **somente as pastas marcadas**
@@ -82,9 +94,9 @@ compila, empacota com Velopack e publica a release. O app verifica essa release 
 - **Barra de endereço editável**: clique duplo no caminho (ou `Ctrl+L`) para digitar, colar ou
   copiar um caminho; `Enter` vai para a pasta, `Esc` cancela. Clicar nas migalhas também navega.
 - **Type-ahead**: comece a digitar e a seleção pula para o item que combina (com indicador na tela).
-- **Colunas ordenáveis**: clique em *Nome*, *Tamanho* ou *Modificado* para ordenar; clique de novo
-  inverte. A escolha é lembrada.
-- **Colunas redimensionáveis**: as **três** colunas têm alça — arraste a divisória no cabeçalho
+- **Colunas ordenáveis**: clique em *Nome*, *Tipo*, *Tamanho*, *Modificado* ou *Criado em* para
+  ordenar; clique de novo inverte. A escolha é lembrada.
+- **Colunas redimensionáveis**: as **cinco** colunas têm alça — arraste a divisória no cabeçalho
   (inclusive *Nome*, que é a mais larga). Duplo clique na alça volta ao padrão. O cabeçalho
   compensa a barra de rolagem (`--sbw`), então a divisória fica exatamente sobre a coluna dos itens.
 - **Janelas múltiplas**: `Ctrl+N` (ou o ícone no topo) abre outra janela na pasta atual, com
@@ -99,7 +111,9 @@ compila, empacota com Velopack e publica a release. O app verifica essa release 
 - Cópia progressiva com cancelamento; nomes nunca colidem (`arquivo (2).ext`).
 - Exclusão vai para a **Lixeira**.
 - **Pré-visualização lateral** com imagem em tamanho real (PSD, EXR, TIFF, SVG…), player de vídeo
-  e metadados. A largura do painel é arrastável (divisória à esquerda; duplo clique volta ao padrão).
+  e metadados (tamanho, modificado, **criado em**, tipo, caminho). A largura do painel é arrastável
+  (divisória à esquerda; duplo clique volta ao padrão) e a grade recalcula as colunas ao abrir/fechar —
+  sem telha cortada na borda.
 - Escalas de Windows são respeitadas: o app é *per monitor v2*, então arraste de coluna, divisória
   e cursor usam as mesmas unidades (px de CSS) em 100%, 150% ou 200%.
 

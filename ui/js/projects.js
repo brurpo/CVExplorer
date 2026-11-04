@@ -1,22 +1,25 @@
 import { call } from './bridge.js';
 import { t } from './i18n.js';
 import * as ui from './ui.js';
-import * as dialogs from './dialogs.js';
 import { state } from './state.js';
 
 let aoNavegarExterno = () => {};
 
+/**
+ * Barra lateral no estilo do Explorer: Favoritos (pastas que o usuário fixa) e
+ * Este Computador (unidades com letra e tipo). Projetos não entram aqui de
+ * propósito — com milhares de projetos, quem diz onde você está é o chip do topo,
+ * que resolve pela pasta atual.
+ */
 export function iniciarLateral({ aoNavegar }) {
   aoNavegarExterno = aoNavegar;
 
-  document.getElementById('btn-projetos-atualizar').addEventListener('click', () => carregarProjetos(true));
-  document.getElementById('btn-add-raiz').addEventListener('click', adicionarRaiz);
-  document.addEventListener('projetos:atualizar', () => carregarProjetos(false));
+  document.getElementById('btn-add-favorito').addEventListener('click', adicionarFavorito);
+  document.getElementById('btn-atualizar-drives').addEventListener('click', () => carregarDiscos(true));
 }
 
 export async function carregarTudo() {
-  await carregarRaizes();
-  await carregarProjetos(false);
+  await Promise.all([carregarFavoritos(), carregarDiscos(false)]);
 }
 
 function vazio(texto) {
@@ -26,131 +29,142 @@ function vazio(texto) {
   return el;
 }
 
-async function carregarRaizes() {
-  const lista = document.getElementById('lista-raizes');
-  try {
-    const raizes = await call('fs.roots');
-    lista.replaceChildren();
+function criarItem({ rotulo, detalhe, titulo, caminho, classe, aoClicar }) {
+  const botao = document.createElement('button');
+  botao.className = `side-item${classe ? ' ' + classe : ''}`;
+  botao.dataset.caminho = caminho;
+  if (titulo) botao.title = titulo;
 
-    if (!raizes?.length) {
-      lista.appendChild(vazio(t('lateral.semRaizes')));
-      return;
-    }
+  const nome = document.createElement('span');
+  nome.className = 'rotulo';
+  nome.textContent = rotulo;
+  botao.appendChild(nome);
 
-    for (const raiz of raizes) {
-      const botao = document.createElement('button');
-      botao.className = 'side-item';
-      botao.dataset.caminho = raiz.caminho;
-
-      const rotulo = document.createElement('span');
-      rotulo.className = 'rotulo';
-      rotulo.textContent = raiz.nome || raiz.caminho;
-      rotulo.title = raiz.caminho;
-
-      const detalhe = document.createElement('span');
-      detalhe.className = 'detalhe';
-      detalhe.textContent = raiz.livreTexto ?? '';
-
-      botao.append(rotulo, detalhe);
-      botao.addEventListener('click', () => navegar(raiz.caminho));
-      lista.appendChild(botao);
-    }
-  } catch (erro) {
-    lista.replaceChildren(vazio(erro.message));
+  if (detalhe) {
+    const det = document.createElement('span');
+    det.className = 'detalhe';
+    det.textContent = detalhe;
+    botao.appendChild(det);
   }
+
+  botao.addEventListener('click', aoClicar);
+  return botao;
 }
 
-/**
- * Projetos ficam em pastas aleatorias: a lista junta os recentes (confiaveis)
- * com o que for encontrado nas raizes configuradas, sem duplicar.
- */
-async function carregarProjetos(mostrarToast) {
-  const lista = document.getElementById('lista-projetos');
-  const raizes = state.config.Raizes ?? [];
-  lista.replaceChildren(vazio(t('lateral.detectando')));
+// ---------- favoritos ----------
+
+async function carregarFavoritos() {
+  const lista = document.getElementById('lista-favoritos');
+  const favoritos = Array.isArray(state.config.Favoritos) ? state.config.Favoritos : [];
+  lista.replaceChildren();
+
+  if (favoritos.length === 0) {
+    lista.appendChild(vazio(t('lateral.semFavoritos')));
+    return;
+  }
+
+  for (const caminho of favoritos) {
+    const nome = caminho.split(/[\\/]/).filter(Boolean).pop() ?? caminho;
+
+    const botao = criarItem({
+      rotulo: nome,
+      detalhe: '',
+      titulo: caminho,
+      caminho,
+      classe: 'favorito',
+      aoClicar: () => navegar(caminho),
+    });
+
+    botao.addEventListener('contextmenu', (evento) => {
+      evento.preventDefault();
+      ui.menuContexto(evento.clientX, evento.clientY, [
+        { rotulo: t('menu.abrir'), acao: () => navegar(caminho) },
+        { rotulo: t('menu.abrirExplorer'), acao: () => call('fs.reveal', { caminho }) },
+        { separador: true },
+        { rotulo: t('lateral.removerFavorito'), perigo: true, acao: () => removerFavorito(caminho) },
+      ]);
+    });
+
+    lista.appendChild(botao);
+  }
+
+  marcarAtivo();
+}
+
+async function adicionarFavorito() {
+  const resultado = await call('fs.pickFolder', {
+    titulo: t('lateral.adicionarFavorito'),
+    inicial: state.caminho ?? '',
+  });
+
+  if (!resultado?.caminho) return;
+
+  const favoritos = new Set(state.config.Favoritos ?? []);
+  favoritos.add(resultado.caminho);
+  state.config.Favoritos = [...favoritos];
+
+  await call('settings.save', state.config).catch(() => {});
+  await carregarFavoritos();
+  ui.toast(t('lateral.favoritoAdicionado'), 'ok', 2400);
+}
+
+async function removerFavorito(caminho) {
+  state.config.Favoritos = (state.config.Favoritos ?? []).filter((c) => c !== caminho);
+  await call('settings.save', state.config).catch(() => {});
+  await carregarFavoritos();
+}
+
+// ---------- unidades ----------
+
+async function carregarDiscos(mostrarErro) {
+  const lista = document.getElementById('lista-drives');
 
   try {
-    const recentes = await call('project.recentes').catch(() => []);
-    const detectados = raizes.length
-      ? await call('project.detect', { raizes, profundidade: 2 }).catch(() => [])
-      : [];
-
-    const mapa = new Map();
-    for (const projeto of [...(recentes ?? []), ...(detectados ?? [])]) {
-      const chave = projeto.Caminho.toLowerCase();
-      if (!mapa.has(chave)) mapa.set(chave, projeto);
-    }
-
-    const projetos = [...mapa.values()];
+    const unidades = await call('fs.roots');
     lista.replaceChildren();
 
-    if (projetos.length === 0) {
-      lista.appendChild(vazio(t('lateral.semProjetos')));
-      return;
+    const pastasFixas = unidades.filter((u) => !['local', 'rede'].includes(u.tipo));
+    const discos = unidades.filter((u) => ['local', 'rede'].includes(u.tipo));
+
+    // Pastas adicionadas em Raizes aparecem como pastas, separadas das unidades.
+    for (const pasta of pastasFixas) {
+      lista.appendChild(criarItem({
+        rotulo: pasta.nome || pasta.caminho,
+        detalhe: '',
+        titulo: pasta.caminho,
+        caminho: pasta.caminho,
+        classe: 'pasta-fixa',
+        aoClicar: () => navegar(pasta.caminho),
+      }));
     }
 
-    for (const projeto of projetos) {
-      const botao = document.createElement('button');
-      botao.className = 'side-item';
-      botao.dataset.caminho = projeto.Caminho;
+    for (const disco of discos) {
+      const letra = disco.letra ? `${disco.letra}:` : '';
+      const etiqueta = disco.nome && disco.nome !== disco.letra ? disco.nome : '';
+      const tipo = disco.tipo === 'rede' ? t('lateral.rede') : t('lateral.local');
 
-      const rotulo = document.createElement('span');
-      rotulo.className = 'rotulo';
-      rotulo.textContent = projeto.Nome;
-      rotulo.title = projeto.Caminho;
-
-      const detalhe = document.createElement('span');
-      detalhe.className = 'detalhe';
-      detalhe.textContent = projeto.Registrado
-        ? (projeto.Marcador?.Tipo ?? '')
-        : t('lateral.naoRegistrado');
-
-      botao.append(rotulo, detalhe);
-      botao.addEventListener('click', () => navegar(projeto.Caminho));
-      botao.addEventListener('contextmenu', (evento) => {
-        evento.preventDefault();
-        ui.menuContexto(evento.clientX, evento.clientY, [
-          { rotulo: t('menu.abrir'), acao: () => navegar(projeto.Caminho) },
-          { rotulo: t('menu.abrirExplorer'), acao: () => call('fs.reveal', { caminho: projeto.Caminho }) },
-          { separador: true },
-          {
-            rotulo: t('menu.criarPastasModelo'),
-            acao: () => dialogs.pastasModelo(projeto.Caminho, () => carregarProjetos(false)),
-          },
-          {
-            rotulo: t('lateral.esquecer'),
-            desabilitado: !projeto.Registrado,
-            perigo: true,
-            acao: async () => {
-              await call('project.esquecerRecente', { caminho: projeto.Caminho }).catch(() => {});
-              await carregarProjetos(false);
-            },
-          },
-        ]);
-      });
-
-      lista.appendChild(botao);
+      lista.appendChild(criarItem({
+        rotulo: etiqueta ? `${letra} ${etiqueta}` : (letra || disco.nome),
+        detalhe: disco.tipo === 'rede' ? tipo : (disco.livreTexto ?? tipo),
+        titulo: `${disco.caminho} — ${tipo}`,
+        caminho: disco.caminho,
+        classe: disco.tipo === 'rede' ? 'disco rede' : 'disco',
+        aoClicar: () => navegar(disco.caminho),
+      }));
     }
 
-    if (mostrarToast) ui.toast(t('toast.projetoDetectado', { n: projetos.length }), 'ok', 2600);
+    if (!lista.children.length) {
+      lista.appendChild(vazio(t('lateral.semUnidades')));
+    }
+
     marcarAtivo();
   } catch (erro) {
     lista.replaceChildren(vazio(erro.message));
+    if (mostrarErro) ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
   }
 }
 
-async function adicionarRaiz() {
-  const resultado = await call('fs.pickFolder', { titulo: t('lateral.adicionarRaiz'), inicial: state.config.Raizes?.[0] ?? '' });
-  if (!resultado?.caminho) return;
-
-  const raizes = new Set(state.config.Raizes ?? []);
-  raizes.add(resultado.caminho);
-  state.config.Raizes = [...raizes];
-
-  await call('settings.save', state.config).catch(() => {});
-  await carregarTudo();
-  await navegar(resultado.caminho);
-}
+// ---------- navegação ----------
 
 function navegar(caminho) {
   aoNavegarExterno(caminho);
@@ -158,13 +172,10 @@ function navegar(caminho) {
 }
 
 function marcarAtivo() {
-  for (const el of document.querySelectorAll('.side-item')) {
-    const ativo = state.caminho && el.dataset.caminho
-      && state.caminho.toLowerCase().startsWith(el.dataset.caminho.toLowerCase());
-    el.classList.toggle('ativo', Boolean(ativo));
-  }
-}
+  const atual = (state.caminho ?? '').toLowerCase();
 
-export function atualizarRaizes() {
-  carregarRaizes();
+  for (const el of document.querySelectorAll('.side-item')) {
+    const alvo = (el.dataset.caminho ?? '').toLowerCase();
+    el.classList.toggle('ativo', Boolean(atual && alvo && atual.startsWith(alvo)));
+  }
 }

@@ -20,6 +20,9 @@ public sealed class AppSettings
     /// <summary>Raizes varridas na auto-deteccao de projetos.</summary>
     public List<string> Raizes { get; set; } = new();
 
+    /// <summary>Pastas fixadas na barra lateral (como os "Acesso rápido" do Explorer).</summary>
+    public List<string> Favoritos { get; set; } = new();
+
     /// <summary>
     /// Projetos ja visitados, do mais recente para o mais antigo.
     /// Projetos ficam em qualquer lugar, entao esta lista e o atalho confiavel.

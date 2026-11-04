@@ -723,7 +723,7 @@ public static class Commands
         var roots = new List<object>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        void Add(string nome, string caminho)
+        void Add(string nome, string caminho, string tipo = "local", string? letra = null)
         {
             if (string.IsNullOrWhiteSpace(caminho) || !seen.Add(caminho))
             {
@@ -735,6 +735,8 @@ public static class Commands
             {
                 nome,
                 caminho,
+                letra,
+                tipo,
                 livre,
                 total,
                 livreTexto = VideoPlanBuilder.FormatBytes(livre),
@@ -750,10 +752,24 @@ public static class Commands
         {
             try
             {
-                if (drive.IsReady)
+                if (!drive.IsReady)
                 {
-                    Add(string.IsNullOrWhiteSpace(drive.VolumeLabel) ? drive.Name : drive.VolumeLabel, drive.RootDirectory.FullName);
+                    continue;
                 }
+
+                var tipo = drive.DriveType switch
+                {
+                    DriveType.Network => "rede",
+                    DriveType.Removable => "removivel",
+                    DriveType.CDRom => "cd",
+                    DriveType.Fixed => "local",
+                    _ => "local",
+                };
+
+                // "T:\" -> letra T; volume sem rotulo usa a letra como nome.
+                var letra = drive.Name.TrimEnd('\\', ':');
+                var rotulo = string.IsNullOrWhiteSpace(drive.VolumeLabel) ? letra : drive.VolumeLabel;
+                Add(rotulo, drive.RootDirectory.FullName, tipo, letra);
             }
             catch
             {

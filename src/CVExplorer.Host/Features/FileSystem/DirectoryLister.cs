@@ -49,6 +49,7 @@ public static class DirectoryLister
                 Pasta = info is DirectoryInfo,
                 Ext = info is DirectoryInfo ? string.Empty : info.Extension.ToLowerInvariant(),
                 Modificado = info.LastWriteTime,
+                Criacao = info.CreationTime,
                 Oculto = (info.Attributes & FileAttributes.Hidden) != 0,
             };
 

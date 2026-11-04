@@ -14,6 +14,8 @@ public sealed class FileEntry
 
     public DateTimeOffset Modificado { get; set; }
 
+    public DateTimeOffset Criacao { get; set; }
+
     public string Ext { get; set; } = string.Empty;
 
     public bool Oculto { get; set; }

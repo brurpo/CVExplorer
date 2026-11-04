@@ -15,17 +15,25 @@ const LARGURA_PADRAO = 320;
 const LARGURA_MINIMA = 240;
 
 export function fechar() {
+  const estavaVisivel = !painel.hidden;
   painel.hidden = true;
   divisor.hidden = true;
   fecharJogador();
   corpoEl.classList.remove('com-player');
   corpoEl.replaceChildren();
   metaEl.replaceChildren();
+
+  if (estavaVisivel) document.dispatchEvent(new CustomEvent('layout'));
 }
 
 function abrir() {
+  const jaVisivel = !painel.hidden;
   painel.hidden = false;
   divisor.hidden = false;
+
+  // A prévia rouba largura da lista: a grade precisa recalcular as colunas,
+  // senão as telhas ficam cortadas na borda.
+  if (!jaVisivel) document.dispatchEvent(new CustomEvent('layout'));
 }
 
 export async function mostrar(items) {
@@ -299,6 +307,11 @@ function placeholder(texto) {
   return el;
 }
 
+function rotuloTipoPreview(item, ext) {
+  if (item.Pasta ?? item.pasta) return t('coluna.pasta');
+  return ext ? ext.toUpperCase() : '—';
+}
+
 async function preencherMeta(item, caminho, ext) {
   const linhas = [];
   const tamanho = item.Tamanho ?? item.tamanho;
@@ -309,7 +322,11 @@ async function preencherMeta(item, caminho, ext) {
   }
 
   linhas.push([t('preview.modificado'), fmt.data(modificado)]);
-  linhas.push([t('preview.tipo'), ext ? ext.toUpperCase() : '—']);
+
+  const criado = item.Criacao ?? item.criacao;
+  if (criado) linhas.push([t('coluna.criado'), fmt.data(criado)]);
+
+  linhas.push([t('preview.tipo'), rotuloTipoPreview(item, ext)]);
 
   if (fmt.ehVideo(caminho)) {
     try {
@@ -395,6 +412,7 @@ function iniciarDivisor() {
       try { divisor.releasePointerCapture(evento.pointerId); } catch { /* ja liberado */ }
       if (arrastou) {
         localStorage.setItem('cvexplorer:previewLargura', String(Math.round(atual)));
+        document.dispatchEvent(new CustomEvent('layout'));
       }
     };
 

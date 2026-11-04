@@ -54,6 +54,7 @@ public sealed class SettingsStore
             c.CaminhoFfmpeg = settings.CaminhoFfmpeg;
             c.ConverterVideoAoColar = settings.ConverterVideoAoColar;
             c.PerguntarAntesDeConverter = settings.PerguntarAntesDeConverter;
+            c.Favoritos = settings.Favoritos;
             c.PerfilVideoPadrao = settings.PerfilVideoPadrao;
             c.ParalelismoBusca = Math.Clamp(settings.ParalelismoBusca, 1, 32);
             c.VerificarAtualizacoes = settings.VerificarAtualizacoes;

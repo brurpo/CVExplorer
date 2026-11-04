@@ -418,6 +418,14 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
   height: clamp(50px, calc(var(--lado-telha, 168px) * 0.5), 128px);
 }
 
+/* Pasta em amarelo: o acervo é cinza e, no meio de miniaturas coloridas,
+   ela desaparecia. Tinge sem trocar o asset. */
+.tile-icone[data-cat="pasta"] .icone-tipo,
+.row-icone[data-cat="pasta"] .icone-tipo {
+  filter: sepia(1) saturate(3.2) hue-rotate(4deg) brightness(1.14);
+  opacity: 1;
+}
+
 .tile-icone svg {
   width: clamp(44px, calc(var(--lado-telha, 168px) * 0.48), 112px);
   height: clamp(44px, calc(var(--lado-telha, 168px) * 0.48), 112px);
@@ -467,8 +475,10 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
   grid-template-columns:
     20px
     minmax(120px, var(--w-nome, 340px))
+    var(--w-tipo, 96px)
     var(--w-tam, 92px)
     var(--w-data, 132px)
+    var(--w-criado, 132px)
     minmax(0, 1fr);
   align-items: center;
   gap: 10px;
@@ -491,9 +501,15 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
   height: 19px;
   object-fit: contain;
   opacity: 0.85;
+}.row.selecionado .row-icone .icone-tipo { opacity: 1; }
+.row-tamanho, .row-data, .row-criado { color: var(--muted); font-size: 11.5px; text-align: right; }
+.row-tipo {
+  color: var(--muted-2);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.row.selecionado .row-icone .icone-tipo { opacity: 1; }
-.row-tamanho, .row-data { color: var(--muted); font-size: 11.5px; text-align: right; }
 
 .col-cabecalho {
   flex: 0 0 auto;
@@ -507,8 +523,10 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
   grid-template-columns:
     20px
     minmax(120px, var(--w-nome, 340px))
+    var(--w-tipo, 96px)
     var(--w-tam, 92px)
     var(--w-data, 132px)
+    var(--w-criado, 132px)
     minmax(0, 1fr);
   align-items: center;
   gap: 10px;

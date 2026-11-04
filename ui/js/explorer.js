@@ -54,6 +54,12 @@ export function iniciarExplorer() {
     new ResizeObserver(() => medirBarraRolagem()).observe(area);
   }
 
+  // Abrir/fechar/arrastar a previa muda a largura disponivel: refaz o layout.
+  document.addEventListener('layout', () => {
+    medirBarraRolagem();
+    desenhar();
+  });
+
   btnVoltar.addEventListener('click', voltar);
   btnAvancar.addEventListener('click', avancar);
   document.getElementById('btn-subir').addEventListener('click', subir);
@@ -438,6 +444,10 @@ function ordenar(a, b) {
     comparacao = (a.Tamanho ?? a.tamanho ?? 0) - (b.Tamanho ?? b.tamanho ?? 0);
   } else if (campo === 'modificado') {
     comparacao = new Date(a.Modificado ?? a.modificado) - new Date(b.Modificado ?? b.modificado);
+  } else if (campo === 'criado') {
+    comparacao = new Date(a.Criacao ?? a.criacao) - new Date(b.Criacao ?? b.criacao);
+  } else if (campo === 'tipo') {
+    comparacao = ORDENADOR.compare(rotuloTipo(a), rotuloTipo(b));
   } else {
     comparacao = ORDENADOR.compare(nomeA, nomeB);
   }
@@ -447,6 +457,25 @@ function ordenar(a, b) {
   }
 
   return desc ? -comparacao : comparacao;
+}
+
+function rotuloTipo(item) {
+  const nome = item.Nome ?? item.nome ?? '';
+  if (item.Pasta ?? item.pasta) return t('coluna.pasta');
+  const ext = fmt.extensao(nome);
+  const categoria = fmt.categoria(ext);
+
+  const nomeCategoria = {
+    imagem: t('coluna.tipoImagem'),
+    video: t('coluna.tipoVideo'),
+    audio: t('coluna.tipoAudio'),
+    modelo3d: t('coluna.tipo3d'),
+    documento: t('coluna.tipoDocumento'),
+    projeto: t('coluna.tipoProjeto'),
+    outro: t('coluna.tipoArquivo'),
+  }[categoria] ?? t('coluna.tipoArquivo');
+
+  return ext ? `${nomeCategoria} ${ext.toUpperCase()}` : nomeCategoria;
 }
 
 function ordenarListas() {
@@ -491,8 +520,10 @@ function atualizarSetasOrdenacao() {
 
 const COLUNAS = {
   nome: { min: 120, max: 2400, padrao: 340, variavel: '--w-nome' },
+  tipo: { min: 70, max: 400, padrao: 96, variavel: '--w-tipo' },
   tamanho: { min: 64, max: 600, padrao: 92, variavel: '--w-tam' },
   data: { min: 88, max: 600, padrao: 132, variavel: '--w-data' },
+  criado: { min: 88, max: 600, padrao: 132, variavel: '--w-criado' },
 };
 
 function aplicarColunas() {
@@ -601,7 +632,7 @@ function carregarPreferencias() {
     }
 
     const ordenacao = JSON.parse(localStorage.getItem('cvexplorer:ordenacao') ?? 'null');
-    if (ordenacao && ['nome', 'tamanho', 'modificado'].includes(ordenacao.campo)) {
+    if (ordenacao && ['nome', 'tamanho', 'modificado', 'tipo', 'criado'].includes(ordenacao.campo)) {
       state.ordenacao = { campo: ordenacao.campo, desc: Boolean(ordenacao.desc) };
     }
   } catch {
@@ -618,8 +649,10 @@ function garantirCabecalho() {
   const colunas = [
     { campo: null, texto: '' },
     { campo: 'nome', texto: t('coluna.nome'), redimensionavel: 'nome' },
+    { campo: 'tipo', texto: t('coluna.tipo'), redimensionavel: 'tipo' },
     { campo: 'tamanho', texto: t('preview.tamanho'), redimensionavel: 'tamanho' },
     { campo: 'modificado', texto: t('preview.modificado'), redimensionavel: 'data' },
+    { campo: 'criado', texto: t('coluna.criado'), redimensionavel: 'criado' },
     { campo: null, texto: '' },
   ];
 
@@ -790,6 +823,7 @@ function renderizarLista(itens) {
 
     const iconeEl = document.createElement('span');
     iconeEl.className = 'row-icone';
+    iconeEl.dataset.cat = ehPasta ? 'pasta' : fmt.categoria(ext);
     iconeEl.innerHTML = icone(ehPasta ? 'pasta' : fmt.categoria(ext), ext);
 
     const nomeEl = document.createElement('span');
@@ -801,11 +835,19 @@ function renderizarLista(itens) {
     tamanhoEl.className = 'row-tamanho';
     tamanhoEl.textContent = ehPasta ? '' : fmt.bytes(item.Tamanho ?? item.tamanho);
 
+    const tipoEl = document.createElement('span');
+    tipoEl.className = 'row-tipo';
+    tipoEl.textContent = rotuloTipo(item);
+
     const dataEl = document.createElement('span');
     dataEl.className = 'row-data';
     dataEl.textContent = fmt.dataCurta(item.Modificado ?? item.modificado);
 
-    linha.append(iconeEl, nomeEl, tamanhoEl, dataEl);
+    const criadoEl = document.createElement('span');
+    criadoEl.className = 'row-criado';
+    criadoEl.textContent = fmt.dataCurta(item.Criacao ?? item.criacao);
+
+    linha.append(iconeEl, nomeEl, tipoEl, tamanhoEl, dataEl, criadoEl);
     fragmento.appendChild(linha);
   }
 
