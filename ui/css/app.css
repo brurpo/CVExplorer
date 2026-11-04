@@ -399,15 +399,43 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
   display: block;
 }
 
-.tile-icone { color: var(--muted); }
-.tile-icone svg { width: 34px; height: 34px; stroke-width: 1.2; }
+.tile-icone { color: var(--text-2); }
+
+/* Ícone e selo acompanham o tamanho da telha: em telas grandes/escala 150%
+   o 34px fixo ficava minúsculo no meio do quadro. */
+.tile-icone .icone-tipo {
+  width: clamp(44px, calc(var(--lado-telha, 168px) * 0.44), 116px);
+  height: clamp(44px, calc(var(--lado-telha, 168px) * 0.44), 116px);
+  object-fit: contain;
+  filter: saturate(0.85);
+  opacity: 0.92;
+}
+
+.tile.selecionado .tile-icone .icone-tipo { opacity: 1; filter: none; }
+
+.tile-icone[data-cat="pasta"] .icone-tipo {
+  width: clamp(50px, calc(var(--lado-telha, 168px) * 0.5), 128px);
+  height: clamp(50px, calc(var(--lado-telha, 168px) * 0.5), 128px);
+}
+
+.tile-icone svg {
+  width: clamp(44px, calc(var(--lado-telha, 168px) * 0.48), 112px);
+  height: clamp(44px, calc(var(--lado-telha, 168px) * 0.48), 112px);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.tile-icone[data-cat="pasta"] svg {
+  width: clamp(46px, calc(var(--lado-telha, 168px) * 0.46), 118px);
+  height: clamp(46px, calc(var(--lado-telha, 168px) * 0.46), 118px);
+}
 
 .tile-nome {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 11.5px;
+  font-size: clamp(11.5px, calc(var(--lado-telha, 168px) * 0.072), 13.5px);
   line-height: 1.25;
   color: var(--text-2);
   word-break: break-word;
@@ -417,15 +445,16 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
 
 .tile-badge {
   position: absolute;
-  right: 5px;
-  bottom: 5px;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: rgba(10, 11, 13, 0.78);
-  color: var(--muted);
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
+  right: 7px;
+  bottom: 7px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: rgba(8, 9, 11, 0.86);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: clamp(11.5px, calc(var(--lado-telha, 168px) * 0.075), 15px);
+  font-weight: 700;
+  letter-spacing: 0.4px;
   text-transform: uppercase;
 }
 
@@ -456,7 +485,14 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
 
 .row-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-icone { display: grid; place-items: center; color: var(--muted); }
-.row-icone svg { width: 15px; height: 15px; }
+.row-icone svg { width: 16px; height: 16px; }
+.row-icone .icone-tipo {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  opacity: 0.85;
+}
+.row.selecionado .row-icone .icone-tipo { opacity: 1; }
 .row-tamanho, .row-data { color: var(--muted); font-size: 11.5px; text-align: right; }
 
 .col-cabecalho {

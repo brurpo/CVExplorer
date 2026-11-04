@@ -110,7 +110,10 @@ public sealed class AppHost
             return _ambiente;
         }
 
-        _ambiente = await CoreWebView2Environment.CreateAsync(null, pastaDados).ConfigureAwait(true);
+        // Sem cache HTTP: a interface vem do disco local e precisa refletir a versao
+        // instalada na hora (senao, depois de uma atualizacao, o CSS/JS antigo fica).
+        var opcoes = new CoreWebView2EnvironmentOptions("--disable-http-cache");
+        _ambiente = await CoreWebView2Environment.CreateAsync(null, pastaDados, opcoes).ConfigureAwait(true);
         return _ambiente;
     }
 

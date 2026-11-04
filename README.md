@@ -20,9 +20,16 @@ e — ao colar um vídeo — entregar já em formato de edição para o After Ef
 
 ## Rodar a partir do código
 
+**Duplo clique em `CVExplorer.cmd`** na raiz — ele baixa o SDK na primeira vez, compila e abre.
+Se já existir uma janela aberta, ela é fechada antes (o `.exe` fica travado durante o build).
+
+Pelo terminal, se preferir:
+
 ```powershell
-.\scripts\setup.ps1   # baixa o SDK .NET 10 para .tools\dotnet e restaura pacotes
-.\scripts\run.ps1     # compila e abre o app
+.\scripts\setup.ps1              # baixa o SDK .NET 10 para .tools\dotnet e restaura pacotes
+.\scripts\run.ps1                # compila e abre o app
+.\scripts\run.ps1 -Pasta "T:\..."  # abre já numa pasta
+.\scripts\run.ps1 -SemBuild      # usa o build atual, sem recompilar
 ```
 
 ## Gerar uma release
@@ -102,6 +109,11 @@ compila, empacota com Velopack e publica a release. O app verifica essa release 
 - Sintaxe: `ext:psd,ai`, `tipo:video|imagem|audio|3d|documento|projeto`, `nome:"shot 01"`, `pasta:"chamadas"`.
 
 ### Miniaturas
+
+Ícones de tipo usam o acervo do BRP_CHROMA (`ui/img/tipos/*.png`, 256px, tons neutros) e
+acompanham o tamanho da telha — antes eram 34 px fixos e ficavam minúsculos em tela com escala
+alta. O selo de formato (PDF, AI, XML…) também escala junto e **continua visível depois que a
+miniatura chega** (antes era apagado junto com o ícone).
 
 | Formato | Como é gerada |
 |---|---|

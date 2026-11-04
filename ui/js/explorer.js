@@ -715,11 +715,16 @@ function criarTelha(item, coluna, linha, largura, altura, alturaLinha) {
   telha.style.top = `${PAD + linha * alturaLinha}px`;
   telha.style.width = `${largura}px`;
   telha.style.height = `${altura}px`;
+  telha.style.setProperty('--lado-telha', `${Math.round(largura)}px`);
 
   const thumb = document.createElement('div');
   thumb.className = 'tile-thumb';
 
-  const usarMiniatura = !ehPasta && !['audio', 'documento', 'outro'].includes(cat);
+  const usarMiniatura = !ehPasta
+    && !['audio', 'documento', 'outro'].includes(cat)
+    // obj/fbx/usd/ma/mb: o shell devolve sempre o mesmo icone generico e minusculo,
+    // entao o icone de tipo do app fica melhor. blend/glb tem previa de verdade.
+    && !(cat === 'modelo3d' && !['blend', 'glb', 'gltf'].includes(ext));
   const emCache = usarMiniatura ? thumbs.emCache(item) : null;
 
   if (emCache) {
@@ -731,16 +736,17 @@ function criarTelha(item, coluna, linha, largura, altura, alturaLinha) {
   } else {
     const iconeEl = document.createElement('div');
     iconeEl.className = 'tile-icone';
-    iconeEl.innerHTML = icone(cat);
+    iconeEl.dataset.cat = cat;
+    iconeEl.innerHTML = icone(cat, ext);
     thumb.appendChild(iconeEl);
-
     if (usarMiniatura) {
       thumbs.solicitar(item, Math.round(largura * (window.devicePixelRatio || 1)), (url) => {
         if (!telha.isConnected) return;
         const img = document.createElement('img');
         img.src = url;
         img.alt = '';
-        thumb.replaceChildren(img);
+        // Troca só o ícone: replaceChildren apagaria o selo de formato.
+        thumb.replaceChild(img, iconeEl);
       });
     }
   }
@@ -788,7 +794,7 @@ function renderizarLista(itens) {
 
     const iconeEl = document.createElement('span');
     iconeEl.className = 'row-icone';
-    iconeEl.innerHTML = icone(ehPasta ? 'pasta' : fmt.categoria(ext));
+    iconeEl.innerHTML = icone(ehPasta ? 'pasta' : fmt.categoria(ext), ext);
 
     const nomeEl = document.createElement('span');
     nomeEl.className = 'row-nome';
