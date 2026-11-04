@@ -5,6 +5,7 @@ import * as ui from './ui.js';
 import * as thumbs from './thumbnails.js';
 import * as preview from './preview.js';
 import * as dialogs from './dialogs.js';
+import * as lateral from './projects.js';
 import * as projetoAtual from './projetoAtual.js';
 import { icone } from './icons.js';
 import { state, itensAtuais, selecionados, limparSelecao } from './state.js';
@@ -109,8 +110,27 @@ export function iniciarExplorer() {
   });
 
   on('os.drop', async (dados) => {
-    if (!state.caminho || !dados?.caminhos?.length) return;
+    if (!dados?.caminhos?.length) return;
+
+    // Solto do Explorer em cima dos Favoritos: vira favorito, não cola arquivo.
+    if (Number.isFinite(dados.x) && Number.isFinite(dados.y)) {
+      const escala = window.devicePixelRatio || 1;
+      if (lateral.alvoFavoritos(dados.x / escala, dados.y / escala)) {
+        lateral.destacarFavoritos(false);
+        await lateral.adicionarFavoritos(dados.caminhos);
+        return;
+      }
+    }
+
+    lateral.destacarFavoritos(false);
+    if (!state.caminho) return;
     await colarCaminhos(dados.caminhos, false);
+  });
+
+  on('os.dragOver', (dados) => {
+    if (!dados || !Number.isFinite(dados.x) || !Number.isFinite(dados.y)) return;
+    const escala = window.devicePixelRatio || 1;
+    lateral.destacarFavoritos(lateral.alvoFavoritos(dados.x / escala, dados.y / escala));
   });
 
   // Outra janela comecou um arraste: se o cursor estiver sobre esta, mostra o alvo.
@@ -185,11 +205,20 @@ function iniciarArrasteExterno() {
         document.body.classList.add('arrastando');
         call('arraste.iniciar', { caminhos, copiar }).catch(() => {});
       }
+
+      lateral.destacarFavoritos(lateral.alvoFavoritos(e.clientX, e.clientY));
     };
 
     const soltar = (e) => {
       encerrar();
       if (!ativo) return;
+
+      // Soltou em cima dos Favoritos: fixa o item em vez de mover na pasta.
+      if (lateral.alvoFavoritos(e.clientX, e.clientY)) {
+        call('arraste.cancelar').catch(() => {});
+        lateral.adicionarFavoritos(caminhos);
+        return;
+      }
 
       // Soltou dentro desta janela, sobre uma pasta: move/copia para ela.
       const sobCursor = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-caminho]');
@@ -216,6 +245,7 @@ function iniciarArrasteExterno() {
       window.removeEventListener('pointerup', soltar);
       window.removeEventListener('pointercancel', cancelar);
       document.body.classList.remove('arrastando');
+      lateral.destacarFavoritos(false);
     }
 
     window.addEventListener('pointermove', mover);

@@ -52,6 +52,16 @@ public sealed class Janela : Form
             if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true)
             {
                 e.Effect = DragDropEffects.Copy;
+                Emitir("os.dragOver", PontoDoMouse(e.X, e.Y));
+            }
+        };
+
+        _web.DragOver += (_, e) =>
+        {
+            if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true)
+            {
+                e.Effect = DragDropEffects.Copy;
+                Emitir("os.dragOver", PontoDoMouse(e.X, e.Y));
             }
         };
 
@@ -59,7 +69,8 @@ public sealed class Janela : Form
         {
             if (e.Data?.GetData(DataFormats.FileDrop) is string[] caminhos)
             {
-                Emitir("os.drop", new { caminhos });
+                var ponto = PontoDoMouse(e.X, e.Y);
+                Emitir("os.drop", new { caminhos, x = ponto.x, y = ponto.y });
                 _host.TrazerParaFrente(this);
             }
         };
@@ -239,6 +250,13 @@ public sealed class Janela : Form
     }
 
     private void Emitir(string evt, object? data) => Enviar(evt, data);
+
+    /// <summary>Converte o ponto do arraste (tela, pixels físicos) para a área da página.</summary>
+    private (int x, int y) PontoDoMouse(int telaX, int telaY)
+    {
+        var ponto = _web.PointToClient(new Point(telaX, telaY));
+        return (ponto.X, ponto.Y);
+    }
 
     private void RestaurarJanela()
     {

@@ -62,7 +62,8 @@ compila, empacota com Velopack e publica a release. O app verifica essa release 
 
 No estilo do Explorer, sem lista de projetos:
 
-- **Favoritos**: pastas que você fixa com o `+` (ou remove pelo menu de contexto). Ficam em
+- **Favoritos**: pastas e arquivos que você fixa. Arraste itens da lista para cá (ou use o `+`) e
+  remova pelo menu de contexto. Pasta abre na navegação; arquivo abre no app padrão. Ficam em
   `config.json` → `Favoritos`.
 - **Este Computador**: unidades com **letra**, rótulo, espaço livre e o **tipo** (`Rede` para
   mapeadas/UNC, `Local` para fixas). Pastas adicionadas em *Raízes* aparecem como pastas.

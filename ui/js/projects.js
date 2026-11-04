@@ -1,6 +1,8 @@
 import { call } from './bridge.js';
 import { t } from './i18n.js';
+import * as fmt from './format.js';
 import * as ui from './ui.js';
+import { icone } from './icons.js';
 import { state } from './state.js';
 
 let aoNavegarExterno = () => {};
@@ -63,7 +65,19 @@ async function carregarFavoritos() {
     return;
   }
 
+  // Um favorito pode ser pasta (navega) ou arquivo (abre no app padrão).
+  const tipos = new Map();
+  await Promise.all(favoritos.map(async (caminho) => {
+    try {
+      const info = await call('fs.stat', { caminho });
+      tipos.set(caminho, Boolean(info?.pasta));
+    } catch {
+      tipos.set(caminho, true);
+    }
+  }));
+
   for (const caminho of favoritos) {
+    const ehPasta = tipos.get(caminho) !== false;
     const nome = caminho.split(/[\\/]/).filter(Boolean).pop() ?? caminho;
 
     const botao = criarItem({
@@ -71,14 +85,16 @@ async function carregarFavoritos() {
       detalhe: '',
       titulo: caminho,
       caminho,
-      classe: 'favorito',
-      aoClicar: () => navegar(caminho),
+      classe: ehPasta ? 'favorito' : 'favorito arquivo',
+      aoClicar: () => (ehPasta ? navegar(caminho) : abrirArquivo(caminho)),
     });
+
+    botao.prepend(iconeFavorito(nome, ehPasta));
 
     botao.addEventListener('contextmenu', (evento) => {
       evento.preventDefault();
       ui.menuContexto(evento.clientX, evento.clientY, [
-        { rotulo: t('menu.abrir'), acao: () => navegar(caminho) },
+        { rotulo: ehPasta ? t('menu.abrir') : t('lateral.abrirArquivo'), acao: () => (ehPasta ? navegar(caminho) : abrirArquivo(caminho)) },
         { rotulo: t('menu.abrirExplorer'), acao: () => call('fs.reveal', { caminho }) },
         { separador: true },
         { rotulo: t('lateral.removerFavorito'), perigo: true, acao: () => removerFavorito(caminho) },
@@ -91,6 +107,21 @@ async function carregarFavoritos() {
   marcarAtivo();
 }
 
+function iconeFavorito(nome, ehPasta) {
+  const span = document.createElement('span');
+  span.className = 'side-icone';
+  const ext = fmt.extensao(nome);
+  span.innerHTML = icone(ehPasta ? 'pasta' : fmt.categoria(ext), ext);
+  if (ehPasta) span.dataset.cat = 'pasta';
+  return span;
+}
+
+function abrirArquivo(caminho) {
+  call('fs.open', { caminho }).catch((erro) => {
+    ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
+  });
+}
+
 async function adicionarFavorito() {
   const resultado = await call('fs.pickFolder', {
     titulo: t('lateral.adicionarFavorito'),
@@ -98,20 +129,50 @@ async function adicionarFavorito() {
   });
 
   if (!resultado?.caminho) return;
-
-  const favoritos = new Set(state.config.Favoritos ?? []);
-  favoritos.add(resultado.caminho);
-  state.config.Favoritos = [...favoritos];
-
-  await call('settings.save', state.config).catch(() => {});
-  await carregarFavoritos();
-  ui.toast(t('lateral.favoritoAdicionado'), 'ok', 2400);
+  await adicionarFavoritos([resultado.caminho]);
 }
 
 async function removerFavorito(caminho) {
   state.config.Favoritos = (state.config.Favoritos ?? []).filter((c) => c !== caminho);
   await call('settings.save', state.config).catch(() => {});
   await carregarFavoritos();
+}
+
+/** Área que aceita arraste para virar favorito. */
+export function alvoFavoritos(x, y) {
+  const secao = document.getElementById('secao-favoritos');
+  if (!secao) return false;
+  const alvo = document.elementFromPoint(x, y);
+  return Boolean(alvo && secao.contains(alvo));
+}
+
+export function destacarFavoritos(ativo) {
+  document.getElementById('secao-favoritos')?.classList.toggle('arraste-sobre', Boolean(ativo));
+}
+
+export async function adicionarFavoritos(caminhos) {
+  const lista = caminhos.filter(Boolean);
+  if (lista.length === 0) return;
+
+  const favoritos = new Set(state.config.Favoritos ?? []);
+  let novos = 0;
+
+  for (const caminho of lista) {
+    if (!favoritos.has(caminho)) {
+      favoritos.add(caminho);
+      novos++;
+    }
+  }
+
+  if (novos === 0) {
+    ui.toast(t('lateral.jaNosFavoritos'), 'info', 2200);
+    return;
+  }
+
+  state.config.Favoritos = [...favoritos];
+  await call('settings.save', state.config).catch(() => {});
+  await carregarFavoritos();
+  ui.toast(t('lateral.favoritosAdicionados', { n: novos }), 'ok', 2400);
 }
 
 // ---------- unidades ----------
@@ -173,9 +234,22 @@ function navegar(caminho) {
 
 function marcarAtivo() {
   const atual = (state.caminho ?? '').toLowerCase();
+  const itens = [...document.querySelectorAll('.side-item')];
 
-  for (const el of document.querySelectorAll('.side-item')) {
+  // Só o caminho mais específico fica ativo: "C:\" não pode marcar junto com "C:\Users\x".
+  let melhor = null;
+  let tamanhoMelhor = -1;
+
+  for (const el of itens) {
     const alvo = (el.dataset.caminho ?? '').toLowerCase();
-    el.classList.toggle('ativo', Boolean(atual && alvo && atual.startsWith(alvo)));
+    if (!alvo || !atual.startsWith(alvo)) continue;
+    if (alvo.length > tamanhoMelhor) {
+      tamanhoMelhor = alvo.length;
+      melhor = el;
+    }
+  }
+
+  for (const el of itens) {
+    el.classList.toggle('ativo', el === melhor);
   }
 }
