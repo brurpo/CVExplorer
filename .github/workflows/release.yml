@@ -53,6 +53,7 @@ jobs:
       - name: Empacotar com Velopack
         shell: pwsh
         run: |
+          # --noInst: release so portatil (zip para extrair e usar, sem instalador).
           vpk pack `
             --packId CVExplorer `
             --packVersion "${{ steps.versao.outputs.valor }}" `
@@ -61,7 +62,8 @@ jobs:
             --packTitle "CV Explorer" `
             --packAuthors "CV Explorer" `
             --runtime win-x64 `
-            --channel win
+            --channel win `
+            --noInst
 
       - name: Publicar release no GitHub
         shell: pwsh

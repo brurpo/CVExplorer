@@ -14,10 +14,13 @@
     <NoWarn>$(NoWarn);MSB3277</NoWarn>
 
     <!-- Injetado pelo CI: vira a origem das atualizacoes automaticas. -->
-    <RepositorioUrl Condition="'$(RepositorioUrl)' == ''">https://github.com/SEU-USUARIO/CVExplorer</RepositorioUrl>
+    <RepositorioUrl Condition="'$(RepositorioUrl)' == ''">https://github.com/brurpo/CVExplorer</RepositorioUrl>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Mesmo icone do executavel, mas embutido como recurso gerenciado para a janela
+         poder carrega-lo com todos os tamanhos (barra de tarefas / Alt+Tab). -->
+    <EmbeddedResource Include="app.ico" LogicalName="CVExplorer.app.ico" />
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>RepositorioUrl</_Parameter1>
       <_Parameter2>$(RepositorioUrl)</_Parameter2>

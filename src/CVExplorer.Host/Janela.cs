@@ -51,6 +51,9 @@ public sealed class Janela : Form
         CaminhoInicial = caminhoInicial;
 
         Text = AppInfo.Nome;
+        // Icone embutido (mesmo app.ico do executavel): garante que a barra de tarefas
+        // e o Alt+Tab usem o logo novo, sem depender do cache de icones do Windows.
+        Icon = IconeApp.Carregar() ?? Icon;
         MinimumSize = new Size(940, 600);
         BackColor = Color.FromArgb(14, 15, 17);
         StartPosition = FormStartPosition.Manual;

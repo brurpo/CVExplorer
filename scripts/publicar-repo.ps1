@@ -111,8 +111,10 @@ if (-not $existe) {
         auto_init   = $false
     } | ConvertTo-Json
 
+    # Bytes UTF-8 explícitos: no PowerShell 5.1 o -Body string sai em Latin-1 e o JSON quebra nos acentos.
     Invoke-RestMethod "https://api.github.com/user/repos" -Method Post -Headers $cabecalhos `
-        -ContentType "application/json" -Body $corpo -TimeoutSec 60 | Out-Null
+        -ContentType "application/json; charset=utf-8" `
+        -Body ([System.Text.Encoding]::UTF8.GetBytes($corpo)) -TimeoutSec 60 | Out-Null
     Write-Host "Repositório criado." -ForegroundColor Green
 }
 
@@ -130,17 +132,20 @@ try {
     }
 
     if (-not $SemPush) {
-        # Credencial temporária: não fica em argumento de processo nem no config global.
-        $arquivoCredencial = Join-Path $env:TEMP ("cvexplorer-cred-" + [Guid]::NewGuid().ToString("N"))
-        $conteudo = "https://x-access-token:$Token@github.com`n"
-        Set-Content -Path $arquivoCredencial -Value $conteudo -NoNewline -Encoding ascii
+        # Credencial via variável de ambiente + helper em shell: o token não aparece na
+        # linha de comando (outros processos leem argv) nem fica salvo em disco.
+        $env:CVEXPLORER_GIT_TOKEN = $Token
+        $env:GIT_TERMINAL_PROMPT = "0"
+        $env:GIT_CONFIG_COUNT = "1"
+        $env:GIT_CONFIG_KEY_0 = "credential.helper"
+        $env:GIT_CONFIG_VALUE_0 = '!f() { echo username=x-access-token; echo "password=$CVEXPLORER_GIT_TOKEN"; }; f'
 
         try {
-            & $git -c "credential.helper=store --file=$arquivoCredencial" push -u origin HEAD
+            & $git push -u origin HEAD
             if ($LASTEXITCODE -ne 0) { throw "git push falhou (código $LASTEXITCODE)" }
         }
         finally {
-            Remove-Item $arquivoCredencial -Force -ErrorAction SilentlyContinue
+            Remove-Item env:CVEXPLORER_GIT_TOKEN, env:GIT_CONFIG_COUNT, env:GIT_CONFIG_KEY_0, env:GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue
         }
     }
     else {

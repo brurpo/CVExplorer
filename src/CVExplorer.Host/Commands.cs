@@ -50,6 +50,8 @@ public static class Commands
                     : CodecCapabilities.Desentrelacador(host.Ffmpeg.Ffmpeg),
             },
             repositorioConfigurado = AppInfo.RepositorioConfigurado,
+            repositorio = AppInfo.RepoUrl,
+            atualizacao = host.Updates.Estado(),
             raizes = host.Settings.Raizes,
             janela = host.JanelaDoContexto?.Id,
         }));
