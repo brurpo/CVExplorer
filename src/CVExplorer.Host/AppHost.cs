@@ -65,6 +65,9 @@ public sealed class AppHost
 
     public FileOperations Files { get; }
 
+    /// <summary>Arquivos compactados abertos como pasta (zip, 7z, rar, tar…).</summary>
+    public ArchiveService Archives { get; } = new();
+
     public PasteService Paste { get; }
 
     public SearchService Search { get; } = new();
@@ -113,13 +116,17 @@ public sealed class AppHost
         string? caminho = null,
         bool primaria = false,
         string? relatorio = null,
-        IReadOnlyList<string>? abasExtras = null)
+        IReadOnlyList<string>? abasExtras = null,
+        Point? posicao = null,
+        string? previa = null,
+        Size? tamanho = null)
     {
-        var janela = new Janela(this, primaria, caminho, relatorio);
+        var janela = new Janela(this, primaria, caminho, relatorio, previa, posicao, tamanho);
         if (abasExtras is { Count: > 0 })
         {
             janela.AbasIniciais.AddRange(abasExtras);
         }
+
         _janelas.Add(janela);
         janela.FormClosed += (_, _) =>
         {

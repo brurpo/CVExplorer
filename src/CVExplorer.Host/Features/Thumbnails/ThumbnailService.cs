@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using ImageMagick;
+using CVExplorer.Host.Features.FileSystem;
 using CVExplorer.Host.Features.Media;
 using CVExplorer.Host.Native;
 
@@ -99,7 +100,7 @@ public sealed class ThumbnailService
     /// Muda quando o pipeline de miniaturas muda (novo decoder, nova ordem, render no app):
     /// invalida o cache antigo sozinho, sem o usuario precisar limpar nada.
     /// </summary>
-    private const int VersaoCache = 2;
+    private const int VersaoCache = 3;
 
     public static string Chave(string caminho, long tamanho, DateTime modificado, int size)
     {
@@ -131,6 +132,13 @@ public sealed class ThumbnailService
             // Arquivo gigante (3D scan de varios GB) travaria o parse: fica o icone de tipo.
             var cabe = tamanho <= 350L * 1024 * 1024;
             return new ThumbnailResult { Chave = chave, Pronta = false, Renderizar = cabe ? "3d" : null };
+        }
+
+        // Compactado usa o icone do proprio app: a miniatura do Shell (pasta com ziper)
+        // vem colorida e destoa do resto da grade.
+        if (ArchiveService.EhCompactado(caminho))
+        {
+            return new ThumbnailResult { Chave = chave, Pronta = false };
         }
 
         // .ai/.pdf: pdf.js desenha a primeira pagina no WebView2, sem Illustrator instalado.
@@ -297,13 +305,24 @@ public sealed class ThumbnailService
 
             try
             {
-                // O .blend guarda o preview de baixo para cima (padrao de imagem do Blender).
+                // O .blend guarda o preview de baixo para cima (padrao de imagem do Blender)
+                // e em RGBA, enquanto o GDI+ espera BGRA: inverte a linha e troca R/B.
                 var stride = data.Stride;
                 var destino = new byte[stride * preview.Altura];
                 for (var y = 0; y < preview.Altura; y++)
                 {
-                    var src = (preview.Altura - 1 - y) * preview.Largura * 4;
-                    Buffer.BlockCopy(preview.Rgba, src, destino, y * stride, preview.Largura * 4);
+                    var origem = (preview.Altura - 1 - y) * preview.Largura * 4;
+                    var linha = y * stride;
+
+                    for (var x = 0; x < preview.Largura; x++)
+                    {
+                        var de = origem + (x * 4);
+                        var para = linha + (x * 4);
+                        destino[para] = preview.Rgba[de + 2];     // B
+                        destino[para + 1] = preview.Rgba[de + 1]; // G
+                        destino[para + 2] = preview.Rgba[de];     // R
+                        destino[para + 3] = preview.Rgba[de + 3]; // A
+                    }
                 }
 
                 Marshal.Copy(destino, 0, data.Scan0, destino.Length);

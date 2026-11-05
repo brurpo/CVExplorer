@@ -23,6 +23,10 @@ public sealed class PlayerStream
 /// Em vez de gerar (e esperar) um arquivo de previa, o ffmpeg decodifica e entrega
 /// um fluxo H.264 fragmentado direto no &lt;video&gt;, enquanto toca. Nada e gravado em disco:
 /// abrir um video custa o tempo de iniciar o processo, e o scrub reinicia o fluxo no ponto.
+///
+/// O fluxo e <b>all-intra</b> (keyframe em todo quadro): dentro do trecho ja baixado o
+/// &lt;video&gt; pula para qualquer instante sem esperar GOP nenhum, e um fluxo reaberto mostra
+/// o primeiro quadro na hora. Custa bitrate, que aqui e loopback.
 /// </summary>
 public sealed class PreviewStreamService
 {
@@ -241,7 +245,9 @@ public sealed class PreviewStreamService
             "-sn", "-dn",
             "-vf", $"scale=min({LarguraMaxima}\\,iw):-2",
             "-pix_fmt", "yuv420p",
-            "-g", "48",
+            // All-intra: todo quadro e keyframe. O scrub nao espera GOP para achar o ponto.
+            "-g", "1",
+            "-bf", "0",
         });
 
         args.AddRange(EncoderArgs(encoder));
@@ -261,18 +267,24 @@ public sealed class PreviewStreamService
 
     private static IEnumerable<string> EncoderArgs(string encoder) => encoder switch
     {
-        "libx264" => new[] { "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-crf", "26" },
-        "h264_nvenc" => new[] { "-c:v", "h264_nvenc", "-preset", "p4", "-tune", "ll", "-b:v", "4M" },
-        "h264_qsv" => new[] { "-c:v", "h264_qsv", "-preset", "veryfast", "-b:v", "4M" },
-        "h264_amf" => new[] { "-c:v", "h264_amf", "-quality", "speed", "-b:v", "4M" },
+        // All-intra precisa de bitrate: 4M em cada quadro fica borrado. 16M num proxy de
+        // 1280 px de largura já é visualmente limpo e cabe folgado no loopback.
+        "libx264" => new[]
+        {
+            "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+            "-crf", "20", "-x264-params", "keyint=1:min-keyint=1:scenecut=0",
+        },
+        "h264_nvenc" => new[] { "-c:v", "h264_nvenc", "-preset", "p1", "-tune", "ll", "-rc", "constqp", "-qp", "22" },
+        "h264_qsv" => new[] { "-c:v", "h264_qsv", "-preset", "veryfast", "-b:v", "16M" },
+        "h264_amf" => new[] { "-c:v", "h264_amf", "-quality", "speed", "-b:v", "16M" },
         "h264_mf" => new[]
         {
             // h264_mf nao tem -preset; o que existe e scenario/rate_control.
-            "-c:v", "h264_mf", "-scenario", "live_streaming", "-rate_control", "cbr", "-b:v", "4M",
+            "-c:v", "h264_mf", "-scenario", "live_streaming", "-rate_control", "cbr_lowdelay", "-b:v", "16M",
         },
-        "libopenh264" => new[] { "-c:v", "libopenh264", "-b:v", "4M" },
-        "h264_vulkan" => new[] { "-c:v", "h264_vulkan", "-b:v", "4M" },
-        _ => new[] { "-c:v", encoder, "-b:v", "4M" },
+        "libopenh264" => new[] { "-c:v", "libopenh264", "-b:v", "16M" },
+        "h264_vulkan" => new[] { "-c:v", "h264_vulkan", "-b:v", "16M" },
+        _ => new[] { "-c:v", encoder, "-b:v", "16M" },
     };
 
     /// <summary>Todos os encoders H.264 que este ffmpeg oferece, na ordem de preferencia.</summary>

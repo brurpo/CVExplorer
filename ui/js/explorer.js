@@ -1090,10 +1090,18 @@ function aoDuploClique(evento) {
 }
 
 function abrir(item) {
+  const caminho = item.Caminho ?? item.caminho;
+
+  // Arquivo compactado abre como pasta (o host lê o índice e lista as entradas).
+  if (!(item.Pasta ?? item.pasta) && fmt.ehCompactado(item.Nome ?? item.nome ?? caminho)) {
+    navegar(`${caminho}\\`);
+    return;
+  }
+
   if (item.Pasta ?? item.pasta) {
-    navegar(item.Caminho ?? item.caminho);
+    navegar(caminho);
   } else {
-    call('fs.open', { caminho: item.Caminho ?? item.caminho })
+    call('fs.open', { caminho })
       .catch((erro) => ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro'));
   }
 }
@@ -1153,16 +1161,23 @@ async function aoMenuContexto(evento) {
   const itens = [];
 
   if (primeiro) {
+    const compactadoAqui = fmt.dentroDeCompactado(state.caminho);
+
     itens.push(
       { rotulo: t('menu.abrir'), acao: () => abrir(primeiro) },
       { rotulo: t('menu.abrirExplorer'), acao: () => call('fs.reveal', { caminho: primeiro.Caminho ?? primeiro.caminho }) },
-      { separador: true },
-      { rotulo: t('menu.copiar'), atalho: 'Ctrl+C', acao: copiar },
-      { rotulo: t('menu.recortar'), atalho: 'Ctrl+X', acao: recortar },
-      { rotulo: t('menu.renomear'), atalho: 'F2', desabilitado: !umSo, acao: renomearSelecionado },
-      { rotulo: t('menu.excluir'), atalho: 'Del', perigo: true, acao: excluirSelecionado },
+      { separador: true },      { rotulo: t('menu.copiar'), atalho: 'Ctrl+C', acao: copiar },
+      { rotulo: t('menu.recortar'), atalho: 'Ctrl+X', desabilitado: compactadoAqui, acao: recortar },
+      { rotulo: t('menu.renomear'), atalho: 'F2', desabilitado: !umSo || compactadoAqui, acao: renomearSelecionado },
+      { rotulo: t('menu.excluir'), atalho: 'Del', perigo: true, desabilitado: compactadoAqui, acao: excluirSelecionado },
       { separador: true },
     );
+
+    if (compactadoAqui) {
+      itens.push({ rotulo: t('menu.extrairSelecionadosAqui'), acao: () => extrairCompactado(selecao, { aqui: true }) });
+      itens.push({ rotulo: t('menu.extrairParaPasta'), acao: () => extrairCompactado(selecao, { aqui: false }) });
+      itens.push({ separador: true });
+    }
 
     if (temVideo) {
       const videos = selecao.filter((i) => !(i.Pasta ?? i.pasta) && fmt.ehVideo(i.Nome ?? i.nome));
@@ -1202,24 +1217,52 @@ async function aoMenuContexto(evento) {
       );
     }
 
+    // Compactado: abrir como pasta e extrair (o arquivo continua no disco).
+    const compactados = selecao.filter((i) => !(i.Pasta ?? i.pasta) && fmt.ehCompactado(i.Nome ?? i.nome));
+    if (compactados.length > 0) {
+      itens.push({ separador: true });
+
+      if (umSo) {
+        itens.push({
+          rotulo: t('menu.abrirComoPasta'),
+          acao: () => navegar(`${compactados[0].Caminho ?? compactados[0].caminho}\\`),
+        });
+      }
+
+      itens.push({
+        rotulo: t('menu.extrairAqui'),
+        acao: () => extrairCompactado(compactados, { aqui: true }),
+      });
+
+      itens.push({
+        rotulo: t('menu.extrairParaPasta'),
+        acao: () => extrairCompactado(compactados, { aqui: false }),
+      });
+    }
+
     itens.push({ separador: true });
     itens.push({
       rotulo: t('menu.copiarCaminho'),
       acao: () => navigator.clipboard?.writeText(selecao.map((i) => i.Caminho ?? i.caminho).join('\n')),
     });
   } else {
-    itens.push({ rotulo: t('menu.novaPasta'), acao: () => novaPasta() });
-    itens.push({ rotulo: t('menu.colar'), atalho: 'Ctrl+V', acao: colar });
-    itens.push({ separador: true });
+    // Dentro de um compactado não se cria nem se cola: só se extrai.
+    const compactado = fmt.dentroDeCompactado(state.caminho);
 
-    if (state.caminho) {
-      itens.push({ rotulo: t('menu.registrarProjeto'), acao: () => dialogs.registrarProjeto(state.caminho) });
-      itens.push({ rotulo: t('menu.pastasMaiores'), acao: () => call('app.novaJanela', { relatorio: state.caminho }) });
+    if (compactado) {
+      itens.push({ rotulo: t('menu.extrairTudoAqui'), acao: () => extrairCompactado([{ caminho: state.caminho }], { aqui: true }) });
+      itens.push({ rotulo: t('menu.extrairParaPasta'), acao: () => extrairCompactado([{ caminho: state.caminho }], { aqui: false }) });
+    } else {
+      itens.push({ rotulo: t('menu.novaPasta'), acao: () => novaPasta() });
+      itens.push({ rotulo: t('menu.colar'), atalho: 'Ctrl+V', acao: colar });
     }
 
-    itens.push({ rotulo: t('menu.novoProjeto'), acao: () => dialogs.novoProjeto(state.caminho, criado) });
+    itens.push({ separador: true });
 
-    if (state.caminho) {
+    if (state.caminho && !compactado) {
+      itens.push({ rotulo: t('menu.registrarProjeto'), acao: () => dialogs.registrarProjeto(state.caminho) });
+      itens.push({ rotulo: t('menu.pastasMaiores'), acao: () => call('app.novaJanela', { relatorio: state.caminho }) });
+      itens.push({ rotulo: t('menu.novoProjeto'), acao: () => dialogs.novoProjeto(state.caminho, criado) });
       itens.push({ rotulo: t('menu.novo'), submenu: await submenuNovo(state.caminho) });
     }
   }
@@ -1233,6 +1276,39 @@ function criado(caminho) {
 }
 
 // ---------- ações ----------
+
+/** "Extrair aqui" ou "extrair em pasta nova" de dentro de um compactado. */
+async function extrairCompactado(itens, { aqui }) {
+  const caminhos = itens.map((i) => i.Caminho ?? i.caminho);
+  const alvo = caminhos[0];
+  if (!alvo) return;
+
+  let nomePasta = null;
+  if (!aqui) {
+    const sugestao = fmt.nomearArquivo(alvo).replace(/\.[^.\\]+$/, '');
+    nomePasta = await dialogs.pedirTexto({
+      titulo: t('menu.extrairParaPasta'),
+      rotulo: t('pasta.nome'),
+      valor: sugestao,
+    });
+    if (!nomePasta) return;
+  }
+
+  try {
+    const resultado = await call('fs.extrair', { caminho: alvo, caminhos, nomePasta });
+    if (!resultado?.ok) {
+      ui.toast(resultado?.erro ?? t('erro.geral', { mensagem: '—' }), 'erro');
+      return;
+    }
+
+    ui.toast(t('toast.extraido', { n: resultado.total, pasta: fmt.nomearArquivo(resultado.destino) }), 'ok', 5000);
+
+    // Extraiu para a pasta que está aberta: a grade já pode mostrar.
+    if (state.caminho && !fmt.dentroDeCompactado(state.caminho)) recarregar();
+  } catch (erro) {
+    ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
+  }
+}
 
 async function novaPasta(pai = state.caminho) {
   if (!pai) return;
@@ -1349,16 +1425,48 @@ async function excluirSelecionado() {
 function copiar() {
   const selecao = selecionados();
   if (selecao.length === 0) return;
-  state.clip = { caminhos: selecao.map((i) => i.Caminho ?? i.caminho), recortar: false };
+  const caminhos = selecao.map((i) => i.Caminho ?? i.caminho);
+
+  // De dentro de um compactado: o host extrai para um temporário e o resto do app
+  // (colar, arrastar, converter) segue trabalhando com arquivos de verdade.
+  if (fmt.dentroDeCompactado(state.caminho)) {
+    copiarDeCompactado(caminhos, selecao.length).catch((erro) => {
+      ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
+    });
+    return;
+  }
+
+  state.clip = { caminhos, recortar: false };
   state.cortados.clear();
   aplicarSelecao();
   call('fs.clipboardSet', { caminhos: state.clip.caminhos }).catch(() => {});
   ui.toast(t('toast.copiado', { n: selecao.length }), 'ok', 2200);
 }
 
+async function copiarDeCompactado(caminhos, quantidade) {
+  ui.toast(t('toast.extraindoCopia', { n: quantidade }), 'info', 1800);
+
+  const resposta = await call('fs.extrairTemporario', { caminhos });
+  const reais = resposta?.caminhos ?? [];
+  if (reais.length === 0) return;
+
+  state.clip = { caminhos: reais, recortar: false };
+  state.cortados.clear();
+  aplicarSelecao();
+  call('fs.clipboardSet', { caminhos: reais }).catch(() => {});
+  ui.toast(t('toast.copiado', { n: reais.length }), 'ok', 2200);
+}
+
 function recortar() {
   const selecao = selecionados();
   if (selecao.length === 0) return;
+
+  // Não existe "recortar" dentro de um compactado: o conteúdo é somente leitura.
+  if (fmt.dentroDeCompactado(state.caminho)) {
+    copiar();
+    return;
+  }
+
   const caminhos = selecao.map((i) => i.Caminho ?? i.caminho);
   state.clip = { caminhos, recortar: true };
   state.cortados = new Set(caminhos);
@@ -1604,6 +1712,20 @@ function aoTeclar(evento) {
     return;
   }
   if (evento.key === 'Backspace') { evento.preventDefault(); subir(); return; }
+
+  // Barra de espaço: prévia rápida do item selecionado (o último, se houver vários).
+  if (evento.key === ' ' && !ctrl && !evento.altKey) {
+    const caminhos = [...state.selecao];
+    const alvo = caminhos[caminhos.length - 1];
+    if (!alvo) return;
+
+    const item = itensAtuais().find((i) => (i.Caminho ?? i.caminho) === alvo);
+    if (!item || item.Pasta) return;
+
+    evento.preventDefault();
+    call('app.previaRapida', { caminho: alvo }).catch(() => {});
+    return;
+  }
   if (evento.key === 'Escape') {
     if (state.busca.ativa) { buscaInput.value = ''; sairDaBusca(); }
     else { limparSelecao(); aplicarSelecao(); preview.limpar(); }

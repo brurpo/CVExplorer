@@ -6,6 +6,7 @@ import * as projetoAtual from './projetoAtual.js';
 import * as dialogs from './dialogs.js';
 import * as preview from './preview.js';
 import * as relatorio from './relatorio.js';
+import * as previaRapida from './previaRapida.js';
 import * as abas from './abas.js';
 import * as ui from './ui.js';
 import { state } from './state.js';
@@ -38,6 +39,13 @@ async function iniciar() {
   if (info.relatorio) {
     document.body.dataset.modo = 'relatorio';
     relatorio.iniciar(info.relatorio);
+  }
+
+  // Janela de prévia rápida (barra de espaço): só o item, sem nada em volta.
+  if (info.previa) {
+    document.body.dataset.modo = 'previa';
+    previaRapida.iniciar(info.previa);
+    on('previa.mostrar', (dados) => previaRapida.iniciar(dados?.caminho));
   }
 
   document.getElementById('btn-novo').addEventListener('click', () => {
@@ -115,10 +123,33 @@ async function iniciar() {
     janelaAcao('Fechar');
   });
 
+  // Arrastar só começa quando o ponteiro anda de verdade. Se o loop nativo do Windows
+  // entrasse no pointerdown, ele engoliria o segundo clique e o duplo clique (maximizar)
+  // nunca chegaria.
   const barra = document.getElementById('titlebar');
   barra.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || e.target.closest('button')) return;
-    janelaAcao('Arrastar');
+
+    const inicio = { x: e.screenX, y: e.screenY };
+    let pedido = false;
+
+    const mover = (evento) => {
+      if (pedido) return;
+      if (Math.abs(evento.screenX - inicio.x) < 4 && Math.abs(evento.screenY - inicio.y) < 4) return;
+      pedido = true;
+      encerrar();
+      janelaAcao('Arrastar');
+    };
+
+    const encerrar = () => {
+      window.removeEventListener('pointermove', mover);
+      window.removeEventListener('pointerup', encerrar);
+      window.removeEventListener('pointercancel', encerrar);
+    };
+
+    window.addEventListener('pointermove', mover);
+    window.addEventListener('pointerup', encerrar);
+    window.addEventListener('pointercancel', encerrar);
   });
   barra.addEventListener('dblclick', (e) => {
     if (e.target.closest('button')) return;
@@ -179,7 +210,7 @@ async function iniciar() {
 
   await lateral.carregarTudo();
 
-  const inicial = await caminhoInicial(config);
+  const inicial = info.relatorio || info.previa ? null : await caminhoInicial(config);
   if (inicial) {
     abas.iniciar({ caminho: inicial, extras: info.abasIniciais ?? [] });
     await explorer.navegar(inicial);

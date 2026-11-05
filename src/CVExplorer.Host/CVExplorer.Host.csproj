@@ -7,7 +7,7 @@
     <AssemblyName>CvExplorer</AssemblyName>
     <RootNamespace>CVExplorer.Host</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>0.1.6</Version>
+    <Version>0.1.7</Version>
     <SatelliteResourceLanguages>pt-BR</SatelliteResourceLanguages>
     <InvariantGlobalization>false</InvariantGlobalization>
     <!-- WebView2 traz assemblies WPF e WinForms; o conflito de WindowsBase e inofensivo aqui. -->
@@ -33,7 +33,9 @@
   <ItemGroup>
     <PackageReference Include="Magick.NET-Q8-x64" Version="15.0.0" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <PackageReference Include="SharpCompress" Version="0.50.8" />
     <PackageReference Include="Velopack" Version="1.2.161" />
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />
   </ItemGroup>
 
   <!-- A interface e HTML/CSS/JS puro, copiada como esta: sem etapa de build. -->

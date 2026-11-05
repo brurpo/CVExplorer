@@ -94,7 +94,9 @@ No estilo do Explorer, sem lista de projetos:
   mouse. Pasta abre na navegação; arquivo abre no app padrão. Ficam em `config.json` → `Favoritos`.
 - **Este Computador**: unidades com **letra**, rótulo, espaço livre, **ícone** (disco empilhado em
   **amarelo** para local, globo em azul para rede) e o **tipo** (`Rede` para mapeadas/UNC, `Local`
-  para fixas). Pastas adicionadas em *Raízes* aparecem como pastas.
+  para fixas). Pastas adicionadas em *Raízes* aparecem como pastas. Antes delas vêm as pastas do
+  perfil com ícone próprio: **Pessoal**, **Área de Trabalho**, **Documentos**, **Downloads**,
+  **Imagens** e **Vídeos**.
 - Ícone de pasta em **amarelo**: com o acervo em tons de cinza, a pasta desaparecia no meio das
   miniaturas coloridas.
 
@@ -142,10 +144,11 @@ No estilo do Explorer, sem lista de projetos:
   compensa a barra de rolagem (`--sbw`), então a divisória fica exatamente sobre a coluna dos itens.
 - **Abas**: cada aba guarda pasta, histórico e seleção. `Ctrl+T` abre, `Ctrl+W` fecha,
   `Ctrl+Tab`/`Ctrl+Shift+Tab` andam entre elas; o **+** da barra abre outra. `Ctrl+clique` soma ou
-  tira uma aba da seleção e `Shift+clique` seleciona o intervalo. Arraste as abas selecionadas
-  **para fora do app** para destacá-las numa janela nova, ou **para dentro de outra janela** para
-  juntá-las lá (se a janela ficar sem abas, ela fecha — é assim que se funde uma janela inteira
-  noutra). Como no arraste de arquivos, quem resolve o alvo é o host, pelo cursor real.
+  tira uma aba da seleção e `Shift+clique` seleciona o intervalo. Arrastar as abas dentro da barra
+  **reordena na hora**, com a etiqueta do que está sendo levado colada no cursor. Saindo da janela,
+  **a janela nova nasce já ali, embaixo do cursor**, com as abas; soltar sobre a barra de outra
+  janela junta as abas lá. Arrastar a **barra de título** de uma janela sobre a barra de abas de
+  outra funde as duas (a janela arrastada some e as abas dela entram na outra).
 - **Pastas maiores**: clique com o botão direito numa pasta → **Pastas maiores…** abre uma janela
   com o tamanho de cada subpasta direta, do maior para o menor (barra, tamanho, % do total e
   contagem de arquivos). A varredura roda em paralelo no host; duplo clique numa linha abre aquela
@@ -163,6 +166,18 @@ No estilo do Explorer, sem lista de projetos:
   desaparece ao terminar — operação encerrada não pode ser "ressuscitada" por um evento atrasado do
   host (era o que deixava *"Movendo 1 item"* parado em 100%).
 - Exclusão vai para a **Lixeira**.
+- **Arquivos compactados abrem como pasta**: duplo clique num `.zip`, `.7z`, `.rar`, `.tar`, `.gz`,
+  `.bz2`, `.xz` (e afins) lista o conteúdo como se fosse uma pasta, com migalhas, ordenação e
+  colunas. Dá para **copiar de dentro** (o host extrai para um temporário e o resto do app segue
+  trabalhando com arquivos de verdade) e clicar com o botão direito em **Extrair aqui** ou
+  **Extrair em pasta…** (pergunta o nome e cria ao lado do arquivo). Dentro do compactado é
+  somente leitura: criar, renomear, recortar e excluir ficam desligados, com aviso claro. O
+  arquivo compactado usa ícone próprio (caixa amarela), não a miniatura do Windows.
+- **Prévia rápida com a barra de espaço**: `Espaço` abre o item selecionado (ou o último, se houver
+  vários) numa janela mínima, só com o nome e a mídia. Imagem, vídeo e **modelo 3D** — no 3D,
+  arrastar com o **esquerdo orbita**, com o **meio desloca** e com o **direito (ou a roda)
+  aproxima**. A janela é reaproveitada: apertar espaço noutro item troca o conteúdo em vez de abrir
+  outra janela.
 - **Pré-visualização lateral sempre no lugar**: o painel abre junto com o app e fica visível (com
   estado vazio) até você recolher — pelo **⟩** do painel ou pelo botão no topo. Nada de abrir/fechar
   sozinho: era isso que roubava largura da grade e fazia o duplo clique acertar outro arquivo
@@ -204,7 +219,7 @@ miniatura chega** (antes era apagado junto com o ícone).
 | **AI / PDF** | **pdf.js desenha a primeira página** (o `.ai` é um PDF por dentro); Shell como reserva |
 | **SVG** | Magick.NET |
 | **EXR / HDR** | Magick.NET (com ajuste de exposição para não sair preta) |
-| **.blend** | **miniatura embutida no próprio arquivo** (bloco `TEST`), lida antes do Shell — instantânea, sem abrir o Blender |
+| **.blend** | **miniatura embutida no próprio arquivo** (bloco `TEST`), lida antes do Shell — instantânea, sem abrir o Blender. Funciona com arquivo comprimido (zstd, que é o padrão ao salvar) e com o cabeçalho novo do Blender 5 (`BLENDER17-01v0502`), por isso a leitura é por **varredura validada** do bloco, não por posição fixa |
 | **OBJ, FBX, GLB, GLTF, STL, USDZ** | **render próprio em 3D** (three.js em Web Worker + WebGL), câmera em 3/4 |
 | MP4, MOV, MXF, AVI, MKV… | frame extraído com ffmpeg → Shell |
 | USD, USDA, USDC, ABC, MA, MB, 3DS, DAE… | ícone do tipo (sem loader no app) |
@@ -263,8 +278,13 @@ token aleatório na URL):
 
 - **Nada é gravado em disco** e nada é esperado: o ffmpeg começa a decodificar e o player toca em
   ~1 segundo, mesmo em arquivo de 300 MB.
-- **Scrub** reinicia o ffmpeg no segundo pedido (`-ss` antes de `-i`, busca por keyframe) e o fluxo
-  novo entra no mesmo `<video>` (≈2 s). A barra de tempo usa a duração real do `ffprobe`.
+- **O fluxo é all-intra** (`-g 1 -bf 0`): todo quadro é keyframe. Isso custa bitrate — que aqui é
+  loopback — e compra o que importa: dentro do trecho já baixado o `<video>` pula para qualquer
+  instante sem esperar GOP, e um fluxo reaberto mostra o primeiro quadro na hora.
+- **Scrub** primeiro tenta o próprio `<video>`: se o segundo pedido está no trecho já baixado, é
+  seek nativo e instantâneo, sem abrir ffmpeg nenhum. Só quando o ponto está fora do buffer o
+  ffmpeg é reiniciado ali (`-ss` antes de `-i`, busca por keyframe) e o fluxo novo entra no mesmo
+  `<video>`. A barra de tempo usa a duração real do `ffprobe`.
 - Controles próprios (play/pause, linha do tempo, tempo, abrir no player externo) porque um fluxo
   contínuo não tem duração de arquivo.
 - O processo do ffmpeg morre ao trocar de arquivo, ao fechar a prévia e ao fechar a janela — e o

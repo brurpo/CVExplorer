@@ -2,7 +2,7 @@ import { call } from './bridge.js';
 import { t } from './i18n.js';
 import * as fmt from './format.js';
 import * as ui from './ui.js';
-import { icone, iconeUnidade } from './icons.js';
+import { icone, iconeEspecial, iconeUnidade } from './icons.js';
 import { state } from './state.js';
 
 let aoNavegarExterno = () => {};
@@ -206,8 +206,29 @@ async function carregarDiscos(mostrarErro) {
     const unidades = await call('fs.roots');
     lista.replaceChildren();
 
-    const pastasFixas = unidades.filter((u) => !['local', 'rede'].includes(u.tipo));
-    const discos = unidades.filter((u) => ['local', 'rede'].includes(u.tipo));
+    const especiais = unidades.filter((u) => u.tipo === 'especial');
+    const pastasFixas = unidades.filter((u) => !['local', 'rede', 'removivel', 'cd', 'especial'].includes(u.tipo));
+    const discos = unidades.filter((u) => ['local', 'rede', 'removivel', 'cd'].includes(u.tipo));
+
+    // Pastas do perfil (Pessoal, Documentos, Downloads…): atalho de um clique.
+    for (const pasta of especiais) {
+      const item = criarItem({
+        rotulo: pasta.nome,
+        detalhe: '',
+        titulo: pasta.caminho,
+        caminho: pasta.caminho,
+        classe: 'pasta-especial',
+        aoClicar: () => navegar(pasta.caminho),
+      });
+
+      const marca = document.createElement('span');
+      marca.className = 'side-icone especial';
+      marca.dataset.tipo = pasta.icone ?? '';
+      marca.innerHTML = iconeEspecial(pasta.icone);
+      item.prepend(marca);
+
+      lista.appendChild(item);
+    }
 
     // Pastas adicionadas em Raizes aparecem como pastas, separadas das unidades.
     for (const pasta of pastasFixas) {

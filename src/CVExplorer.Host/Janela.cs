@@ -44,12 +44,22 @@ public sealed class Janela : Form
     private const int HTBOTTOMRIGHT = 17;
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
 
-    public Janela(AppHost host, bool primaria, string? caminhoInicial, string? relatorio = null)
+    public Janela(
+        AppHost host,
+        bool primaria,
+        string? caminhoInicial,
+        string? relatorio = null,
+        string? previaArquivo = null,
+        Point? posicao = null,
+        Size? tamanho = null)
     {
         _host = host;
         Primaria = primaria;
         CaminhoInicial = caminhoInicial;
         RelatorioPasta = relatorio;
+        PreviaArquivo = previaArquivo;
+        PosicaoForcada = posicao;
+        TamanhoForcado = tamanho;
 
         Text = AppInfo.Nome;
         // Icone embutido (mesmo app.ico do executavel): garante que a barra de tarefas
@@ -67,6 +77,42 @@ public sealed class Janela : Form
         if (primaria)
         {
             RestaurarJanela();
+        }
+        else if (PosicaoForcada is { } forcada)
+        {
+            var area = Screen.FromPoint(forcada).WorkingArea;
+            var largura = TamanhoForcado?.Width ?? 1200;
+            var altura = TamanhoForcado?.Height ?? 800;
+            largura = Math.Clamp(largura, MinimumSize.Width, area.Width);
+            altura = Math.Clamp(altura, MinimumSize.Height, area.Height);
+            if (TamanhoForcado is { } pedido)
+            {
+                MinimumSize = new Size(Math.Min(MinimumSize.Width, pedido.Width), Math.Min(MinimumSize.Height, pedido.Height));
+            }
+
+            Bounds = new Rectangle(
+                Math.Clamp(forcada.X, area.Left, Math.Max(area.Left, area.Right - largura)),
+                Math.Clamp(forcada.Y, area.Top, Math.Max(area.Top, area.Bottom - altura)),
+                largura,
+                altura);
+        }
+        else if (TamanhoForcado is { } medida)
+        {
+            var referencia = _host.Janelas.FirstOrDefault(j => !j.IsDisposed)?.Bounds
+                ?? new Rectangle(120, 90, 1280, 820);
+            var area = Screen.FromPoint(new Point(referencia.X + 40, referencia.Y + 40)).WorkingArea;
+
+            MinimumSize = new Size(
+                Math.Min(MinimumSize.Width, medida.Width),
+                Math.Min(MinimumSize.Height, medida.Height));
+
+            var largura = Math.Clamp(medida.Width, 320, area.Width);
+            var altura = Math.Clamp(medida.Height, 240, area.Height);
+            Bounds = new Rectangle(
+                Math.Clamp(referencia.X + (referencia.Width - largura) / 2, area.Left, Math.Max(area.Left, area.Right - largura)),
+                Math.Clamp(referencia.Y + (referencia.Height - altura) / 2, area.Top, Math.Max(area.Top, area.Bottom - altura)),
+                largura,
+                altura);
         }
         else
         {
@@ -154,6 +200,18 @@ public sealed class Janela : Form
     /// <summary>Abas extras que esta janela deve abrir junto da pasta inicial (arraste de abas).</summary>
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public List<string> AbasIniciais { get; } = new();
+
+    /// <summary>Posição pedida na criação (janela que nasce sob o cursor, no arraste de abas).</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public Point? PosicaoForcada { get; set; }
+
+    /// <summary>Tamanho pedido na criação (janela de prévia rápida, por exemplo).</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public Size? TamanhoForcado { get; set; }
+
+    /// <summary>Arquivo mostrado pela prévia rápida (null = janela normal).</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public string? PreviaArquivo { get; set; }
 
     /// <summary>Pasta exibida agora: e o destino de um arraste vindo de outra janela.</summary>
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -354,12 +412,31 @@ public sealed class Janela : Form
         // O loop de arraste do Windows bloqueia ate soltar: sai da thread do IPC primeiro.
         BeginInvoke(() =>
         {
+            // Enquanto a janela é arrastada, o host observa se ela foi solta sobre a barra
+            // de abas de outra janela (aí as abas se fundem).
+            _host.Abas.IniciarJanela(this);
             SendMessage(Handle, WM_NCLBUTTONDOWN, (IntPtr)HTCAPTION, IntPtr.Zero);
             Emitir("janela.estado", new { maximizada = WindowState == FormWindowState.Maximized });
         });
     }
 
     public void MinimizarJanela() => WindowState = FormWindowState.Minimized;
+
+    /// <summary>
+    /// Fecha sem passar pelo que a interface faria (a janela temporária do arraste de abas
+    /// já entregou o conteúdo para outra).
+    /// </summary>
+    public void FecharSilencioso()
+    {
+        try
+        {
+            Close();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Falha ao fechar janela", ex);
+        }
+    }
 
     public void AlternarMaximizado()
     {

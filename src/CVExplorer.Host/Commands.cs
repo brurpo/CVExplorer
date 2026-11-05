@@ -56,6 +56,8 @@ public static class Commands
             janela = host.JanelaDoContexto?.Id,
             // Janela de relatório (pastas maiores) em vez do explorador.
             relatorio = host.JanelaDoContexto?.RelatorioPasta,
+            // Janela de prévia rápida (barra de espaço).
+            previa = host.JanelaDoContexto?.PreviaArquivo,
             // Abas que vieram junto da janela (arraste de abas para fora).
             abasIniciais = host.JanelaDoContexto?.AbasIniciais ?? new List<string>(),
         }));
@@ -100,11 +102,36 @@ public static class Commands
             return Task.FromResult<object?>(new { ok = true });
         });
 
-        Add("abas.soltar", (_, _) => Task.FromResult<object?>(host.Abas.Soltar()));
+        Add("abas.soltar", (_, _) =>
+        {
+            host.Abas.Cancelar();
+            return Task.FromResult<object?>(new { ok = true });
+        });
 
         Add("abas.cancelar", (_, _) =>
         {
             host.Abas.Cancelar();
+            return Task.FromResult<object?>(new { ok = true });
+        });
+
+        // A janela arrastada manda as abas para a janela de destino e se fecha
+        // (arrastar a barra de título sobre a barra de abas de outra janela).
+        Add("abas.fundir", (args, _) =>
+        {
+            var origem = host.JanelaDoContexto;
+            var destino = host.Janelas.FirstOrDefault(j => j.Id == NullableStr(args, "destino"));
+            var abas = StrArray(args, "abas");
+
+            if (destino is not null && destino.Id != origem?.Id && abas.Count > 0)
+            {
+                destino.Enviar("abas.adotar", new { abas });
+
+                if (origem is not null)
+                {
+                    origem.BeginInvoke(origem.FecharSilencioso);
+                }
+            }
+
             return Task.FromResult<object?>(new { ok = true });
         });
 
@@ -125,6 +152,13 @@ public static class Commands
         Add("app.ultimaPasta", (args, _) =>
         {
             var caminho = Str(args, "caminho");
+
+            // Dentro de um compactado o caminho não existe no disco: não vale como "última pasta".
+            if (ArchiveService.Separar(caminho) is not null)
+            {
+                return Task.FromResult<object?>(new { ok = true, ignorado = true });
+            }
+
             host.Settings.UltimaPasta = caminho;
 
             // Cada janela tem a sua pasta atual: e o destino do arraste entre janelas.
@@ -147,11 +181,47 @@ public static class Commands
         {
             var caminho = Str(args, "caminho");
             var relatorio = Str(args, "relatorio");
+            var previa = Str(args, "previa");
             var janela = host.AbrirJanela(
                 string.IsNullOrWhiteSpace(caminho) ? host.JanelaDoContexto?.PastaAtual : caminho,
                 primaria: false,
-                relatorio: string.IsNullOrWhiteSpace(relatorio) ? null : relatorio);
+                relatorio: string.IsNullOrWhiteSpace(relatorio) ? null : relatorio,
+                previa: string.IsNullOrWhiteSpace(previa) ? null : previa);
             return Task.FromResult<object?>(new { ok = true, janela = janela.Id });
+        });
+
+        // Prévia rápida (barra de espaço): reaproveita a janela já aberta, se houver,
+        // em vez de encher a tela de janelinhas.
+        Add("app.previaRapida", (args, _) =>
+        {
+            var caminho = Str(args, "caminho");
+            if (string.IsNullOrWhiteSpace(caminho))
+            {
+                return Task.FromResult<object?>(new { ok = false });
+            }
+
+            var existente = host.Janelas.FirstOrDefault(j => !j.IsDisposed && j.PreviaArquivo is not null);
+            if (existente is not null)
+            {
+                existente.Enviar("previa.mostrar", new { caminho });
+                existente.Activate();
+                return Task.FromResult<object?>(new { ok = true, janela = existente.Id, reutilizada = true });
+            }
+
+            var janela = host.AbrirJanela(caminho, primaria: false, previa: caminho, tamanho: new Size(900, 640));
+            return Task.FromResult<object?>(new { ok = true, janela = janela.Id, reutilizada = false });
+        });
+
+        // URL loopback do arquivo cru (o three.js lê o modelo direto dela).
+        Add("fs.arquivoUrl", (args, _) =>
+        {
+            var caminho = Str(args, "caminho");
+            return Task.FromResult<object?>(new
+            {
+                ok = true,
+                url = host.Player.RegistrarArquivo(caminho),
+                nome = Path.GetFileName(caminho),
+            });
         });
 
         // ---------- arraste entre janelas ----------
@@ -188,6 +258,26 @@ public static class Commands
             var ocultos = Bool(args, "mostrarOcultos", host.Settings.MostrarOcultos);
             var opId = Str(args, "opId");
 
+            // Dentro de um arquivo compactado o "diretório" é o próprio arquivo.
+            if (ArchiveService.Separar(caminho) is { } dentro)
+            {
+                var entradas = await Task.Run(
+                    () => host.Archives.Listar(dentro.Arquivo, dentro.Interno),
+                    ct).ConfigureAwait(false);
+
+                entradas = entradas
+                    .Where(e => ocultos || !e.Nome.StartsWith('.'))
+                    .ToList();
+
+                foreach (var lote in entradas.Chunk(DirectoryLister.BatchSize))
+                {
+                    host.Emit("dir.batch", new { opId, itens = lote });
+                }
+
+                host.Emit("dir.done", new { opId, total = entradas.Count });
+                return new { total = entradas.Count };
+            }
+
             var itens = await DirectoryLister.ListAsync(
                 caminho,
                 ocultos,
@@ -205,6 +295,19 @@ public static class Commands
         Add("fs.free", (args, _) =>
         {
             var caminho = Str(args, "caminho");
+
+            // Dentro de um compactado não existe "espaço livre" do item.
+            if (ArchiveService.Separar(caminho) is { } dentro)
+            {
+                var (livreArquivo, totalArquivo) = Win32.FreeSpace(dentro.Arquivo);
+                return Task.FromResult<object?>(new
+                {
+                    livre = livreArquivo,
+                    total = totalArquivo,
+                    livreTexto = VideoPlanBuilder.FormatBytes(livreArquivo),
+                });
+            }
+
             var (livre, total) = Win32.FreeSpace(caminho);
             return Task.FromResult<object?>(new
             {
@@ -213,6 +316,70 @@ public static class Commands
                 livreTexto = VideoPlanBuilder.FormatBytes(livre),
             });
         });
+
+        // Extrai o que está selecionado dentro do compactado para uma pasta do disco.
+        Add("fs.extrair", async (args, ct) =>
+        {
+            var caminho = Str(args, "caminho");
+            var destino = Str(args, "destino");
+            var nomePasta = Str(args, "nomePasta");
+            var nomes = StrArray(args, "caminhos");
+
+            if (ArchiveService.Separar(caminho) is not { } dentro)
+            {
+                return new { ok = false, erro = "Não é um arquivo compactado." };
+            }
+
+            // "Extrair aqui" usa a pasta que contém o arquivo; "extrair em pasta nova"
+            // cria a pasta com o nome que o usuário digitou, ao lado do arquivo.
+            var baseDestino = Path.GetDirectoryName(dentro.Arquivo) ?? AppPaths.Root;
+            var pastaDestino = !string.IsNullOrWhiteSpace(destino)
+                ? destino
+                : string.IsNullOrWhiteSpace(nomePasta)
+                    ? baseDestino
+                    : Path.Combine(baseDestino, SanearNome(nomePasta));
+
+            var internos = nomes
+                .Select(n => ArchiveService.Separar(n) is { } alvo ? alvo.Interno : string.Empty)
+                .Where(n => n.Length > 0)
+                .ToList();
+
+            if (internos.Count == 0)
+            {
+                internos.Add(dentro.Interno);
+            }
+
+            var extraidos = await Task.Run(
+                () => host.Archives.Extrair(dentro.Arquivo, internos, pastaDestino),
+                ct).ConfigureAwait(false);
+
+            return new { ok = true, total = extraidos.Count, destino = pastaDestino, itens = extraidos };
+        }, operacao: true);
+
+        // Copiar de dentro de um compactado: extrai para um temporário e devolve os
+        // caminhos reais — o resto do app (colar, arrastar, converter) segue igual.
+        Add("fs.extrairTemporario", async (args, ct) =>
+        {
+            var caminhos = StrArray(args, "caminhos");
+            var reais = new List<string>();
+
+            foreach (var caminho in caminhos)
+            {
+                if (ArchiveService.Separar(caminho) is not { } dentro)
+                {
+                    reais.Add(caminho);
+                    continue;
+                }
+
+                var extraidos = await Task.Run(
+                    () => host.Archives.ExtrairParaTemporario(dentro.Arquivo, new[] { dentro.Interno }),
+                    ct).ConfigureAwait(false);
+
+                reais.AddRange(extraidos);
+            }
+
+            return new { ok = true, caminhos = reais };
+        }, operacao: true);
 
         Add("fs.roots", (_, _) => Task.FromResult<object?>(Roots(host)));
 
@@ -285,6 +452,7 @@ public static class Commands
             var origens = StrArray(args, "origens");
             var destino = Str(args, "destino");
             var opId = Str(args, "opId");
+            NegarCompactado(destino);
             var resultado = await host.Files.CopyAsync(origens, destino, opId, ct).ConfigureAwait(false);
             return ResultadoOperacao(resultado);
         }, operacao: true);
@@ -295,14 +463,17 @@ public static class Commands
             var origens = StrArray(args, "origens");
             var destino = Str(args, "destino");
             var opId = Str(args, "opId");
+            NegarCompactado(destino);
             var resultado = await host.Files.MoveAsync(origens, destino, opId, ct).ConfigureAwait(false);
             return ResultadoOperacao(resultado);
         }, operacao: true);
 
         Add("fs.rename", (args, _) =>
         {
-            var caminho = FileOperations.Rename(Str(args, "caminho"), Str(args, "novoNome"));
-            return Task.FromResult<object?>(new { caminho });
+            var caminho = Str(args, "caminho");
+            NegarCompactado(caminho);
+            var renomeado = FileOperations.Rename(caminho, Str(args, "novoNome"));
+            return Task.FromResult<object?>(new { caminho = renomeado });
         });
 
         // Relatório "pastas maiores": soma o tamanho de cada subpasta direta, em paralelo.
@@ -406,13 +577,20 @@ public static class Commands
 
         Add("fs.mkdir", (args, _) =>
         {
-            var caminho = FileOperations.CreateFolder(Str(args, "pai"), Str(args, "nome", "Nova pasta"));
+            var pai = Str(args, "pai");
+            NegarCompactado(pai);
+            var caminho = FileOperations.CreateFolder(pai, Str(args, "nome", "Nova pasta"));
             return Task.FromResult<object?>(new { caminho });
         });
 
         Add("fs.delete", (args, _) =>
         {
             var caminhos = StrArray(args, "caminhos");
+            foreach (var caminho in caminhos)
+            {
+                NegarCompactado(caminho);
+            }
+
             FileOperations.DeleteToRecycleBin(caminhos);
             return Task.FromResult<object?>(new { ok = true, excluidos = caminhos.Count });
         });
@@ -1111,7 +1289,7 @@ public static class Commands
         var roots = new List<object>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        void Add(string nome, string caminho, string tipo = "local", string? letra = null)
+        void Add(string nome, string caminho, string tipo = "local", string? letra = null, string? icone = null)
         {
             if (string.IsNullOrWhiteSpace(caminho) || !seen.Add(caminho))
             {
@@ -1125,11 +1303,37 @@ public static class Commands
                 caminho,
                 letra,
                 tipo,
+                icone,
                 livre,
                 total,
                 livreTexto = VideoPlanBuilder.FormatBytes(livre),
             });
         }
+
+        // Pastas do perfil vêm primeiro: é onde o dia de trabalho começa.
+        var perfil = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        Add("Pessoal", perfil, "especial", icone: "pessoal");
+
+        void Especial(string nome, Environment.SpecialFolder pasta, string icone)
+        {
+            var caminho = Environment.GetFolderPath(pasta);
+            if (!string.IsNullOrEmpty(caminho) && Directory.Exists(caminho))
+            {
+                Add(nome, caminho, "especial", icone: icone);
+            }
+        }
+
+        Especial("Área de Trabalho", Environment.SpecialFolder.Desktop, "desktop");
+        Especial("Documentos", Environment.SpecialFolder.MyDocuments, "documentos");
+
+        var downloads = Path.Combine(perfil, "Downloads");
+        if (Directory.Exists(downloads))
+        {
+            Add("Downloads", downloads, "especial", icone: "downloads");
+        }
+
+        Especial("Imagens", Environment.SpecialFolder.MyPictures, "imagens");
+        Especial("Vídeos", Environment.SpecialFolder.MyVideos, "videos");
 
         foreach (var raiz in host.Settings.Raizes)
         {
@@ -1165,10 +1369,25 @@ public static class Commands
             }
         }
 
-        var perfil = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        Add("Pessoal", perfil);
-
         return roots;
+    }
+
+    /// <summary>Dentro de um arquivo compactado nada é gravado: só listar, copiar e extrair.</summary>
+    private static void NegarCompactado(string caminho)
+    {
+        if (ArchiveService.Separar(caminho) is not null)
+        {
+            throw new InvalidOperationException(
+                "Esta pasta está dentro de um arquivo compactado. Use \"Extrair aqui\" para trazer os itens para o disco.");
+        }
+    }
+
+    /// <summary>Nome de pasta digitado pelo usuário: sem caracteres que o Windows recusa.</summary>
+    private static string SanearNome(string nome)
+    {
+        var invalidos = Path.GetInvalidFileNameChars();
+        var limpo = new string(nome.Trim().Select(c => invalidos.Contains(c) ? '_' : c).ToArray());
+        return string.IsNullOrWhiteSpace(limpo) ? "extraido" : limpo;
     }
 
     /// <summary>Janela que fez a chamada (o id vem da interface; sem ele, a janela ativa).</summary>

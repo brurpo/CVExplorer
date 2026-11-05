@@ -215,8 +215,16 @@ async function mostrarVideo(item, caminho, nome) {
     corpoEl.appendChild(botaoExterno(caminho));
   });
 
-  // Direto no arquivo: seek nativo (instantâneo). Pelo ffmpeg: reabre o fluxo no ponto.
+  // Direto no arquivo: seek nativo (instantâneo). Pelo ffmpeg: se o ponto já foi baixado,
+  // o próprio <video> pula até ele (o fluxo é all-intra, então é imediato); só quando o
+  // ponto está fora do trecho baixado é que o fluxo é reaberto ali.
   // Em nenhum dos casos dá "play" sozinho se estava pausado.
+  barra.addEventListener('input', () => {
+    const total = jogador?.duracao || jogador?.video?.duration || 0;
+    if (!total || !jogador?.tempo) return;
+    jogador.tempo.textContent = `${relogio((Number(barra.value) / 1000) * total)} / ${relogio(total)}`;
+  });
+
   barra.addEventListener('change', async () => {
     const total = jogador.duracao || video.duration || 0;
     if (!total) return;
@@ -225,6 +233,13 @@ async function mostrarVideo(item, caminho, nome) {
 
     if (jogador.nativo) {
       video.currentTime = alvo;
+      atualizarTempo();
+      return;
+    }
+
+    const deslocamento = alvo - jogador.inicio;
+    if (deslocamento >= 0 && estaNoBuffer(deslocamento)) {
+      video.currentTime = deslocamento;
       atualizarTempo();
       return;
     }
@@ -257,8 +272,22 @@ function atualizarTempo() {
   }
 }
 
-function relogio(segundos) {
-  const s = Math.max(0, Math.floor(segundos || 0));
+/** O instante pedido já está no trecho que o navegador baixou? */
+function estaNoBuffer(segundos) {
+  const video = jogador?.video;
+  if (!video?.buffered) return false;
+
+  for (let i = 0; i < video.buffered.length; i++) {
+    const inicio = video.buffered.start(i);
+    const fim = video.buffered.end(i);
+    // Margem no fim: o último pedaço pode ainda estar chegando.
+    if (segundos >= inicio && segundos <= fim - 0.15) return true;
+  }
+
+  return false;
+}
+
+function relogio(segundos) {  const s = Math.max(0, Math.floor(segundos || 0));
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const resto = s % 60;

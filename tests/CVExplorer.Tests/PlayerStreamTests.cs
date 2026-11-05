@@ -45,8 +45,8 @@ public sealed class PlayerStreamTests
 
     [Theory]
     [InlineData("libx264", "ultrafast")]
-    [InlineData("h264_nvenc", "p4")]
-    [InlineData("h264_mf", "speed")]
+    [InlineData("h264_nvenc", "p1")]
+    [InlineData("h264_mf", "")]
     [InlineData("h264_qsv", "veryfast")]
     public void CadaEncoderUsaSeuProprioPreset(string encoder, string preset)
     {
@@ -60,6 +60,17 @@ public sealed class PlayerStreamTests
         {
             Assert.Equal(preset, args[indicePreset + 1]);
         }
+    }
+
+    [Fact]
+    public void FluxoEhAllIntraParaOScrubSerInstantaneo()
+    {
+        var args = PreviewStreamService.Argumentos(Video(), "libx264", 0);
+
+        // Um keyframe por quadro: o <video> pula para qualquer instante do trecho baixado
+        // sem decodificar GOP, e o fluxo reaberto mostra o primeiro quadro na hora.
+        Assert.Equal("1", args[args.IndexOf("-g") + 1]);
+        Assert.Equal("0", args[args.IndexOf("-bf") + 1]);
     }
 
     [Fact]

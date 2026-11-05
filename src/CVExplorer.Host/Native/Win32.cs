@@ -25,6 +25,14 @@ internal static class Win32
         return false;
     }
 
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
+    private const int VK_LBUTTON = 0x01;
+
+    /// <summary>Botão esquerdo do mouse pressionado agora (independe de quem tem o foco).</summary>
+    public static bool BotaoEsquerdoPressionado() => (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern bool GetDiskFreeSpaceEx(
         string lpDirectoryName,

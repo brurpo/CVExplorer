@@ -8,9 +8,11 @@ import * as explorer from './explorer.js';
  * é única na janela, então trocar de aba salva o estado atual e restaura o da nova.
  *
  * Arraste:
- *  - arrastar abas para fora da janela -> vira outra janela (o host decide pelo cursor);
- *  - arrastar para dentro de outra janela -> as abas entram na barra dela;
- *  - se a janela ficar sem abas, ela fecha (é o "arrastar a janela inteira").
+ *  - dentro da barra: reordena na hora (a posição do cursor manda);
+ *  - saindo da janela: a janela nova nasce na hora, embaixo do cursor, já com as abas;
+ *  - soltando sobre a barra de outra janela: as abas entram na barra dela;
+ *  - arrastar a barra de título sobre a barra de abas de outra janela funde as duas.
+ * Quem acompanha o cursor fora da janela é o host (cada WebView2 só vê o próprio mouse).
  */
 let abas = [];
 let ativaId = null;
@@ -60,9 +62,27 @@ export function iniciar({ caminho, extras = [] }) {
   // Outra janela soltou abas aqui.
   on('abas.adotar', (dados) => adotar(dados?.abas ?? []));
 
-  // Realce enquanto arrasta abas por cima desta janela.
+  // Esta janela é a que receberia as abas que estão sendo arrastadas.
+  on('abas.alvo', (dados) => {
+    document.body.classList.toggle('abas-alvo', Boolean(dados?.ativo));
+  });
+
   on('abas.arraste', (dados) => {
-    document.body.classList.toggle('abas-alvo', Boolean(dados?.ativo && dados?.alvo));
+    if (!dados?.ativo) document.body.classList.remove('aba-arrastando');
+  });
+
+  // Uma janela nova levou as abas que estávamos arrastando: some com elas daqui.
+  on('abas.destacada', () => {
+    finalizarArraste();
+    removerSelecionadas();
+  });
+
+  // Arrastaram outra janela para a nossa barra de abas: ela manda as abas e se fecha.
+  on('abas.fundir', async (dados) => {
+    const caminhos = abas.map((aba) => aba.caminho).filter(Boolean);
+    document.body.classList.remove('abas-alvo', 'aba-arrastando');
+    if (caminhos.length === 0) return;
+    await call('abas.fundir', { destino: dados?.destino, abas: caminhos }).catch(() => {});
   });
 
   render();
@@ -107,8 +127,81 @@ function render() {
       }
     });
 
+    if (arrastandoSelecao && selecionadas.has(aba.id)) el.classList.add('arrastando');
+
     lista.appendChild(el);
   }
+}
+
+// ---- feedback do arraste -------------------------------------------------
+
+let arrastandoSelecao = false;
+let arrasteAtual = null;
+
+function comecarArrasteVisual() {
+  arrastandoSelecao = true;
+  document.body.classList.add('aba-arrastando');
+
+  const lista = abas.filter((a) => selecionadas.has(a.id));
+  const fantasma = document.createElement('div');
+  fantasma.id = 'aba-fantasma';
+  fantasma.textContent = lista.length > 1
+    ? t('abas.arrastando', { n: lista.length })
+    : rotulo(lista[0]?.caminho);
+  document.body.appendChild(fantasma);
+
+  render();
+  const caminhos = lista.map((a) => a.caminho).filter(Boolean);
+  call('abas.arrastarIniciar', { abas: caminhos }).catch(() => {});
+}
+
+function fantasmaMover(x, y) {
+  const fantasma = document.getElementById('aba-fantasma');
+  if (!fantasma) return;
+  fantasma.style.transform = `translate(${x + 12}px, ${y + 10}px)`;
+}
+
+function fantasmaRemover() {
+  document.getElementById('aba-fantasma')?.remove();
+}
+
+/** Encerra o arraste em curso (usado também quando outra janela leva as abas). */
+function finalizarArraste() {
+  const atual = arrasteAtual;
+  arrasteAtual = null;
+  arrastandoSelecao = false;
+  document.body.classList.remove('aba-arrastando');
+  fantasmaRemover();
+  if (atual) atual();
+}
+
+/** Índice de inserção a partir da posição horizontal do cursor. */
+function indiceNoCursor(clientX) {
+  const lista = listaEl();
+  if (!lista) return abas.length;
+
+  const elementos = [...lista.querySelectorAll('.aba')];
+  for (let i = 0; i < elementos.length; i++) {
+    const caixa = elementos[i].getBoundingClientRect();
+    if (clientX < caixa.left + caixa.width / 2) return i;
+  }
+
+  return elementos.length;
+}
+
+/** Move as abas selecionadas para o índice pedido (o arraste vira reordenação). */
+function reordenarPara(indice) {
+  const grupo = abas.filter((a) => selecionadas.has(a.id));
+  if (grupo.length === 0) return;
+
+  const sobra = abas.filter((a) => !selecionadas.has(a.id));
+  const antes = abas.slice(0, indice).filter((a) => !selecionadas.has(a.id)).length;
+  const novo = [...sobra.slice(0, antes), ...grupo, ...sobra.slice(antes)];
+
+  if (novo.every((aba, i) => aba.id === abas[i].id)) return;
+
+  abas = novo;
+  render();
 }
 
 function iniciarArraste(evento, aba) {
@@ -142,55 +235,60 @@ function iniciarArraste(evento, aba) {
 
   const inicio = { x: evento.clientX, y: evento.clientY };
   let arrastando = false;
-  let movendo = false;
+  let indiceAtual = -1;
+
+  // Permite que outra janela (ou o host) encerre este arraste.
+  arrasteAtual = encerrar;
 
   const mover = (e) => {
     if (!arrastando) {
-      if (Math.abs(e.clientX - inicio.x) < 6 && Math.abs(e.clientY - inicio.y) < 6) return;
+      if (Math.abs(e.clientX - inicio.x) < 5 && Math.abs(e.clientY - inicio.y) < 5) return;
       arrastando = true;
-      document.body.classList.add('arrastando-abas');
-      const caminhos = abas.filter((a) => selecionadas.has(a.id)).map((a) => a.caminho).filter(Boolean);
-      call('abas.arrastarIniciar', { abas: caminhos }).catch(() => {});
+      comecarArrasteVisual();
     }
 
-    movendo = true;
+    fantasmaMover(e.clientX, e.clientY);
+
+    // Dentro da barra: as abas selecionadas andam junto com o cursor.
+    const lista = listaEl();
+    const dentro = lista && lista.getBoundingClientRect();
+    if (!dentro || e.clientY < dentro.top - 12 || e.clientY > dentro.bottom + 12) return;
+
+    const indice = indiceNoCursor(e.clientX);
+    if (indice === indiceAtual) return;
+    indiceAtual = indice;
+    reordenarPara(indice);
   };
 
-  const soltar = async () => {
+  const soltar = async (e) => {
+    const estavaArrastando = arrastando;
     encerrar();
-    if (!arrastando) {
+
+    if (!estavaArrastando) {
       // Clique simples: troca de aba (e mantém só ela selecionada).
       await ativar(aba.id);
       return;
     }
 
-    if (!movendo) {
-      call('abas.cancelar').catch(() => {});
-      return;
-    }
-
-    let resposta;
-    try {
-      resposta = await call('abas.soltar');
-    } catch {
-      return;
-    }
-
-    if (resposta?.acao === 'mover' || resposta?.acao === 'destacar') {
-      removerSelecionadas();
-    }
+    // Só reordenou dentro da barra: o host não tem mais nada a fazer.
+    call('abas.cancelar').catch(() => {});
   };
 
   const cancelar = () => {
+    const estavaArrastando = arrastando;
     encerrar();
-    if (arrastando) call('abas.cancelar').catch(() => {});
+    if (estavaArrastando) call('abas.cancelar').catch(() => {});
   };
 
   function encerrar() {
     window.removeEventListener('pointermove', mover);
     window.removeEventListener('pointerup', soltar);
     window.removeEventListener('pointercancel', cancelar);
-    document.body.classList.remove('arrastando-abas');
+    if (arrasteAtual === encerrar) arrasteAtual = null;
+    arrastandoSelecao = false;
+    document.body.classList.remove('aba-arrastando');
+    fantasmaRemover();
+    render();
   }
 
   window.addEventListener('pointermove', mover);

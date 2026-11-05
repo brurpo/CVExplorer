@@ -55,8 +55,14 @@ export const CATEGORIAS = {
   audio: ['wav', 'mp3', 'aif', 'aiff', 'flac', 'm4a', 'ogg', 'aac'],
   modelo3d: ['blend', 'obj', 'fbx', 'usd', 'usda', 'usdc', 'usdz', 'glb', 'gltf', 'ma', 'mb', 'c4d', 'abc', 'stl'],
   documento: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'csv', 'md'],
+  compactado: ['zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'tbz2', 'xz', 'txz', 'zst', 'cab', 'iso'],
   projeto: ['aep', 'prproj', 'drp', 'nk'],
 };
+
+export function ehCompactado(nomeOuExt) {
+  const ext = nomeOuExt.includes('.') ? extensao(nomeOuExt) : nomeOuExt;
+  return CATEGORIAS.compactado.includes(ext);
+}
 
 export function categoria(ext) {
   for (const [nome, lista] of Object.entries(CATEGORIAS)) {
@@ -80,6 +86,19 @@ export function podeSerSequencia(nome) {
 export function nomearArquivo(caminho) {
   const partes = caminho.split(/[\\/]/);
   return partes[partes.length - 1] || caminho;
+}
+
+/**
+ * O caminho está dentro de um arquivo compactado aberto como pasta?
+ * Basta achar um trecho com extensão de compactado seguido de mais caminho.
+ */
+export function dentroDeCompactado(caminho) {
+  if (!caminho) return false;
+  const partes = caminho.replace(/\\+$/, '').split('\\');
+  for (let i = 1; i < partes.length; i++) {
+    if (ehCompactado(partes[i])) return true;
+  }
+  return false;
 }
 
 export function pastaDe(caminho) {

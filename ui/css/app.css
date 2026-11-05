@@ -391,6 +391,7 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
 .side-icone svg { width: 16px; height: 16px; }
 .side-icone.unidade svg { width: 15px; height: 15px; color: var(--pasta); }
 .side-icone.unidade[data-tipo="rede"] svg { color: var(--accent); }
+.side-icone.especial svg { width: 16px; height: 16px; color: var(--pasta); }
 .side-icone .icone-tipo { width: 17px; height: 17px; object-fit: contain; }
 .side-icone[data-cat="pasta"] .icone-tipo {
   filter: sepia(1) saturate(3.2) hue-rotate(4deg) brightness(1.14);
@@ -495,6 +496,19 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
 }
 
 .tile-icone { color: var(--text-2); }
+
+/* Arquivo compactado: caixa no amarelo das pastas (azul é seleção, não decoração). */
+.tile-icone .icone-compactado,
+.row-icone .icone-compactado,
+.side-icone .icone-compactado {
+  color: var(--pasta);
+}
+
+.tile-icone .icone-compactado {
+  width: clamp(48px, calc(var(--lado-telha, 168px) * 0.62), 150px);
+  height: clamp(48px, calc(var(--lado-telha, 168px) * 0.62), 150px);
+  opacity: .95;
+}
 
 /* Ícone e selo acompanham o tamanho da telha: em telas grandes/escala 150%
    o 34px fixo ficava minúsculo no meio do quadro.
@@ -1369,6 +1383,91 @@ body[data-modo="relatorio"] #arraste-alvo {
   display: none;
 }
 
+/* ---------- prévia rápida (barra de espaço) ---------- */
+
+body[data-modo="previa"] .shell,
+body[data-modo="previa"] .statusbar,
+body[data-modo="previa"] .topbar,
+body[data-modo="previa"] #abas,
+body[data-modo="previa"] #arraste-alvo,
+body[data-modo="previa"] #relatorio {
+  display: none;
+}
+
+body[data-modo="previa"] {
+  grid-template-rows: 30px 1fr;
+}
+
+.previa-rapida {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.previa-rapida-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--barra);
+}
+
+.previa-rapida-nome {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.previa-rapida-dica {
+  flex: 0 0 auto;
+  color: var(--muted-2);
+  font-size: 11px;
+}
+
+.previa-rapida-corpo {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  min-height: 0;
+  background: #121316;
+  overflow: hidden;
+}
+
+.previa-rapida-imagem {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
+.previa-rapida-video {
+  width: 100%;
+  max-height: 100%;
+  background: #000;
+}
+
+.previa-rapida-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.previa-rapida-canvas:active { cursor: grabbing; }
+
+.previa-rapida-falha {
+  padding: 24px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
 body[data-modo="relatorio"] {
   grid-template-rows: 30px 1fr;
 }
@@ -1562,4 +1661,35 @@ body.abas-alvo .abas {
   background: rgba(90, 169, 230, 0.12);
 }
 
-body.arrastando-abas { cursor: grabbing; }
+body.aba-arrastando { cursor: grabbing; }
+body.aba-arrastando .aba { transition: transform .08s ease-out; }
+
+/* As abas que estão sendo arrastadas ficam apagadas no lugar (a fantasma é quem anda). */
+.aba.arrastando {
+  opacity: .45;
+  border-color: var(--accent);
+  border-style: dashed;
+}
+
+/* Etiqueta que acompanha o cursor durante o arraste. */
+#aba-fantasma {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  height: 24px;
+  max-width: 220px;
+  padding: 0 10px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  background: rgba(20, 24, 30, .92);
+  color: var(--text);
+  font-size: 12px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .45);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
