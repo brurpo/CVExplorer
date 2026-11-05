@@ -44,11 +44,12 @@ public sealed class Janela : Form
     private const int HTBOTTOMRIGHT = 17;
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
 
-    public Janela(AppHost host, bool primaria, string? caminhoInicial)
+    public Janela(AppHost host, bool primaria, string? caminhoInicial, string? relatorio = null)
     {
         _host = host;
         Primaria = primaria;
         CaminhoInicial = caminhoInicial;
+        RelatorioPasta = relatorio;
 
         Text = AppInfo.Nome;
         // Icone embutido (mesmo app.ico do executavel): garante que a barra de tarefas
@@ -147,6 +148,13 @@ public sealed class Janela : Form
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public string? CaminhoInicial { get; set; }
 
+    /// <summary>Pasta cujo relatório de tamanho esta janela mostra (null = explorador normal).</summary>
+    public string? RelatorioPasta { get; }
+
+    /// <summary>Abas extras que esta janela deve abrir junto da pasta inicial (arraste de abas).</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public List<string> AbasIniciais { get; } = new();
+
     /// <summary>Pasta exibida agora: e o destino de um arraste vindo de outra janela.</summary>
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public string? PastaAtual { get; set; }
@@ -175,6 +183,35 @@ public sealed class Janela : Form
         if (_interfacePronta)
         {
             _bridge?.Emit(evt, data);
+            return;
+        }
+
+        // Interface ainda carregando (aba movida logo depois de abrir a janela): guarda.
+        lock (_pendentes)
+        {
+            _pendentes.Add((evt, data));
+        }
+    }
+
+    private readonly List<(string Evento, object? Dados)> _pendentes = new();
+
+    private void DespejarPendentes()
+    {
+        (string Evento, object? Dados)[] lista;
+        lock (_pendentes)
+        {
+            if (_pendentes.Count == 0)
+            {
+                return;
+            }
+
+            lista = _pendentes.ToArray();
+            _pendentes.Clear();
+        }
+
+        foreach (var (evento, dados) in lista)
+        {
+            _bridge?.Emit(evento, dados);
         }
     }
 
@@ -372,6 +409,7 @@ public sealed class Janela : Form
             {
                 _interfacePronta = true;
                 _web.Focus();
+                DespejarPendentes();
                 Emitir("app.ready", new { versao = AppInfo.Versao });
                 await VerificarAtualizacoesAsync();
             };

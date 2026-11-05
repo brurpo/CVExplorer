@@ -91,6 +91,13 @@
     </div>
   </header>
 
+  <nav id="abas" class="abas" role="tablist">
+    <div id="abas-lista" class="abas-lista"></div>
+    <button id="aba-nova" class="aba-nova" data-i18n-title="abas.nova" aria-label="Nova aba">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+    </button>
+  </nav>
+
   <div class="shell">
     <aside class="sidebar">
       <section class="side-section">
@@ -132,6 +139,19 @@
       <footer id="preview-meta" class="preview-meta"></footer>
     </aside>
   </div>
+
+  <section id="relatorio" class="relatorio" hidden>
+    <header class="relatorio-topo">
+      <div>
+        <h1 id="relatorio-nome" class="relatorio-titulo">Pastas maiores</h1>
+        <p id="relatorio-resumo" class="relatorio-resumo"></p>
+      </div>
+      <div class="relatorio-acoes">
+        <button id="relatorio-atualizar" class="btn">Atualizar</button>
+      </div>
+    </header>
+    <div id="relatorio-corpo" class="relatorio-corpo"></div>
+  </section>
 
   <footer class="statusbar">
     <span id="status-itens" class="status-item"></span>

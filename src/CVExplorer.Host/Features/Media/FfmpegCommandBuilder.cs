@@ -59,6 +59,12 @@ public static class FfmpegCommandBuilder
         // Ficam numa cadeia única porque só pode existir um -vf.
         var filtros = new List<string>();
 
+        if (plan.LarguraMaxima > 0)
+        {
+            // Preset "leve" (WhatsApp): cabe na largura pedida sem esticar o que já é menor.
+            filtros.Add($"scale='min({plan.LarguraMaxima}\\,iw)':-2");
+        }
+
         if (info.Largura % 2 != 0 || info.Altura % 2 != 0)
         {
             filtros.Add("scale=trunc(iw/2)*2:trunc(ih/2)*2");
@@ -164,6 +170,12 @@ public static class FfmpegCommandBuilder
                     args.Add("aac");
                     args.Add("-b:a");
                     args.Add("320k");
+                    break;
+                case "aac128":
+                    // Preset "leve": arquivo pequeno para mandar por WhatsApp.
+                    args.Add("aac");
+                    args.Add("-b:a");
+                    args.Add("128k");
                     break;
                 case "pcm16":
                     args.Add("pcm_s16le");

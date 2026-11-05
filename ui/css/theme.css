@@ -136,7 +136,7 @@ body {
   /* Sem coluna explicita, o grid usa max-content e a interface estoura a janela. */
   grid-template-columns: minmax(0, 1fr);
   /* barra de título própria (30) + toolbar (52) + conteúdo (1fr) + rodapé (26) */
-  grid-template-rows: 30px 52px minmax(0, 1fr) 26px;
+  grid-template-rows: 30px 52px 32px minmax(0, 1fr) 26px;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);

@@ -75,6 +75,9 @@ public sealed class AppHost
 
     public ArrasteService Arraste { get; }
 
+    /// <summary>Arraste de abas entre janelas (destacar ou juntar).</summary>
+    public AbasService Abas { get; }
+
     /// <summary>Janela que abriu o comando em execucao (para eventos e conflitos).</summary>
     public Janela? JanelaDoContexto => ContextoAtual.Value;
 
@@ -102,12 +105,21 @@ public sealed class AppHost
         Paste = new PasteService(Probe, Transcode, Files, Settings);
         Thumbs = new ThumbnailService(Settings, Ffmpeg);
         Arraste = new ArrasteService(this);
+        Abas = new AbasService(this);
     }
 
     /// <summary>Abre uma janela nova. A primeira persiste posicao; as outras nascem deslocadas.</summary>
-    public Janela AbrirJanela(string? caminho = null, bool primaria = false)
+    public Janela AbrirJanela(
+        string? caminho = null,
+        bool primaria = false,
+        string? relatorio = null,
+        IReadOnlyList<string>? abasExtras = null)
     {
-        var janela = new Janela(this, primaria, caminho);
+        var janela = new Janela(this, primaria, caminho, relatorio);
+        if (abasExtras is { Count: > 0 })
+        {
+            janela.AbasIniciais.AddRange(abasExtras);
+        }
         _janelas.Add(janela);
         janela.FormClosed += (_, _) =>
         {

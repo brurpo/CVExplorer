@@ -1325,3 +1325,241 @@ body.arrastando .row, body.arrastando .telha { cursor: grabbing; }
 }
 
 @keyframes girar { to { transform: rotate(360deg); } }
+
+/* Favoritos: lixeira vermelha à direita, para remover num clique. */
+.favorito-linha {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.favorito-linha .side-item {
+  flex: 1;
+  padding-right: 26px;
+}
+
+.favorito-remover {
+  position: absolute;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--danger);
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity var(--dur), background var(--dur);
+}
+
+.favorito-remover svg { width: 13px; height: 13px; }
+.favorito-remover:hover { opacity: 1; background: var(--danger-dim); }
+
+/* ---------- janela de relatório (pastas maiores) ---------- */
+
+/* No modo relatório o explorador fica escondido atrás, só a barra de título e o corpo aparecem. */
+body[data-modo="relatorio"] .shell,
+body[data-modo="relatorio"] .statusbar,
+body[data-modo="relatorio"] .topbar,
+body[data-modo="relatorio"] #abas,
+body[data-modo="relatorio"] #arraste-alvo {
+  display: none;
+}
+
+body[data-modo="relatorio"] {
+  grid-template-rows: 30px 1fr;
+}
+
+.relatorio {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 14px 18px 18px;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.relatorio-topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.relatorio-titulo {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.relatorio-resumo {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.relatorio-corpo {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.relatorio-linha {
+  display: grid;
+  grid-template-columns: 34px minmax(180px, 1fr) minmax(160px, 340px) 88px 48px 96px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+}
+
+.relatorio-linha:last-child { border-bottom: 0; }
+.relatorio-linha:hover { background: var(--surface-2); }
+
+.relatorio-posicao {
+  color: var(--muted-2);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.relatorio-pasta {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relatorio-barra {
+  position: relative;
+  height: 7px;
+  border-radius: 4px;
+  background: var(--bg-elev);
+  overflow: hidden;
+}
+
+.relatorio-barra i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+  border-radius: 4px;
+}
+
+.relatorio-tamanho,
+.relatorio-parte,
+.relatorio-arquivos {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--muted);
+}
+
+/* ---------- abas ---------- */
+
+.abas {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  padding: 0 8px;
+  height: 32px;
+  background: var(--barra);
+  border-bottom: 1px solid var(--border);
+}
+
+.abas-lista {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.abas-lista::-webkit-scrollbar { height: 0; }
+
+.aba {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 190px;
+  padding: 0 6px 0 10px;
+  margin-top: 4px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 7px 7px 0 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: default;
+  user-select: none;
+}
+
+.aba:hover { background: var(--surface-2); color: var(--text-2); }
+
+.aba.ativa {
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.aba.selecionada:not(.ativa) {
+  background: rgba(90, 169, 230, 0.18);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.aba-nome {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aba-fechar {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted-2);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.aba-fechar:hover { background: var(--danger-dim); color: var(--danger); }
+
+.aba-nova {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  margin: 5px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.aba-nova svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.aba-nova:hover { background: var(--surface-2); color: var(--accent); }
+
+/* Janela de destino de um arraste de abas. */
+body.abas-alvo .abas {
+  outline: 2px dashed var(--accent);
+  outline-offset: -3px;
+  background: rgba(90, 169, 230, 0.12);
+}
+
+body.arrastando-abas { cursor: grabbing; }

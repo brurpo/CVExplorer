@@ -54,6 +54,10 @@ public static class Commands
             atualizacao = host.Updates.Estado(),
             raizes = host.Settings.Raizes,
             janela = host.JanelaDoContexto?.Id,
+            // Janela de relatório (pastas maiores) em vez do explorador.
+            relatorio = host.JanelaDoContexto?.RelatorioPasta,
+            // Abas que vieram junto da janela (arraste de abas para fora).
+            abasIniciais = host.JanelaDoContexto?.AbasIniciais ?? new List<string>(),
         }));
 
         Add("settings.get", (_, _) => Task.FromResult<object?>(host.Settings));
@@ -87,6 +91,20 @@ public static class Commands
         Add("app.janelaArrastar", (args, _) =>
         {
             JanelaDoContexto(host, args)?.ArrastarJanela();
+            return Task.FromResult<object?>(new { ok = true });
+        });
+
+        Add("abas.arrastarIniciar", (args, _) =>
+        {
+            host.Abas.Iniciar(host.JanelaDoContexto, StrArray(args, "abas"));
+            return Task.FromResult<object?>(new { ok = true });
+        });
+
+        Add("abas.soltar", (_, _) => Task.FromResult<object?>(host.Abas.Soltar()));
+
+        Add("abas.cancelar", (_, _) =>
+        {
+            host.Abas.Cancelar();
             return Task.FromResult<object?>(new { ok = true });
         });
 
@@ -128,7 +146,11 @@ public static class Commands
         Add("app.novaJanela", (args, _) =>
         {
             var caminho = Str(args, "caminho");
-            var janela = host.AbrirJanela(string.IsNullOrWhiteSpace(caminho) ? host.JanelaDoContexto?.PastaAtual : caminho);
+            var relatorio = Str(args, "relatorio");
+            var janela = host.AbrirJanela(
+                string.IsNullOrWhiteSpace(caminho) ? host.JanelaDoContexto?.PastaAtual : caminho,
+                primaria: false,
+                relatorio: string.IsNullOrWhiteSpace(relatorio) ? null : relatorio);
             return Task.FromResult<object?>(new { ok = true, janela = janela.Id });
         });
 
@@ -282,6 +304,105 @@ public static class Commands
             var caminho = FileOperations.Rename(Str(args, "caminho"), Str(args, "novoNome"));
             return Task.FromResult<object?>(new { caminho });
         });
+
+        // Relatório "pastas maiores": soma o tamanho de cada subpasta direta, em paralelo.
+        Add("fs.pastasMaiores", async (args, ct) =>
+        {
+            var caminho = Str(args, "caminho");
+            if (string.IsNullOrWhiteSpace(caminho) || !Directory.Exists(caminho))
+            {
+                return new { ok = false, erro = "Pasta nao encontrada.", pastas = Array.Empty<object>() };
+            }
+
+            string[] subpastas;
+            try
+            {
+                subpastas = Directory.GetDirectories(caminho);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"Falha ao listar {caminho}", ex);
+                return new { ok = false, erro = ex.Message, pastas = Array.Empty<object>() };
+            }
+
+            var medidas = new List<(string Nome, string Caminho, long Bytes, int Arquivos)>();
+            var portao = new SemaphoreSlim(Math.Clamp(Environment.ProcessorCount / 2, 2, 8));
+            var trava = new object();
+
+            var tarefas = subpastas.Select(async pasta =>
+            {
+                await portao.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    var (bytes, arquivos) = await Task.Run(() => Medir(pasta, ct), ct).ConfigureAwait(false);
+                    lock (trava)
+                    {
+                        medidas.Add((Path.GetFileName(pasta), pasta, bytes, arquivos));
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    // cancelado pelo usuário: devolve o que já mediu
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"Falha ao medir {pasta}", ex);
+                }
+                finally
+                {
+                    portao.Release();
+                }
+            });
+
+            await Task.WhenAll(tarefas).ConfigureAwait(false);
+
+            var lista = medidas
+                .OrderByDescending(m => m.Bytes)
+                .Select(m => new { nome = m.Nome, caminho = m.Caminho, bytes = m.Bytes, arquivos = m.Arquivos })
+                .ToList();
+
+            return new
+            {
+                ok = true,
+                caminho,
+                totalBytes = medidas.Sum(m => m.Bytes),
+                arquivos = medidas.Sum(m => m.Arquivos),
+                pastas = lista,
+            };
+        }, operacao: true);
+
+        static (long Bytes, int Arquivos) Medir(string pasta, CancellationToken ct)
+        {
+            long bytes = 0;
+            var arquivos = 0;
+
+            var opcoes = new EnumerationOptions
+            {
+                IgnoreInaccessible = true,
+                RecurseSubdirectories = true,
+                AttributesToSkip = FileAttributes.ReparsePoint,
+            };
+
+            try
+            {
+                foreach (var arquivo in new DirectoryInfo(pasta).EnumerateFiles("*", opcoes))
+                {
+                    ct.ThrowIfCancellationRequested();
+                    bytes += arquivo.Length;
+                    arquivos++;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // pasta sem permissão no meio do caminho: fica com o que já somou
+            }
+
+            return (bytes, arquivos);
+        }
 
         Add("fs.mkdir", (args, _) =>
         {

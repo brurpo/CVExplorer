@@ -38,6 +38,7 @@ export const PRESETS_CONVERSAO = [
     itens: [
       { chave: 'h264', rotulo: 'H.264 — automático' },
       { chave: 'h264_50', rotulo: 'H.264 — 50 Mbps' },
+      { chave: 'h264_leve', rotulo: 'H.264 leve (WhatsApp)' },
     ],
   },
 ];

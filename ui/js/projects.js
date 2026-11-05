@@ -101,11 +101,33 @@ async function carregarFavoritos() {
       ]);
     });
 
-    lista.appendChild(botao);
+    // Lixeira à direita: tira o favorito num clique, sem passar pelo menu.
+    const linha = document.createElement('div');
+    linha.className = 'favorito-linha';
+    linha.appendChild(botao);
+
+    const lixeira = document.createElement('button');
+    lixeira.className = 'favorito-remover';
+    lixeira.title = t('lateral.removerFavorito');
+    lixeira.setAttribute('aria-label', t('lateral.removerFavorito'));
+    lixeira.innerHTML = LIXEIRA;
+    lixeira.addEventListener('click', (evento) => {
+      evento.preventDefault();
+      evento.stopPropagation();
+      removerFavorito(caminho);
+    });
+
+    linha.appendChild(lixeira);
+    lista.appendChild(linha);
   }
 
   marcarAtivo();
 }
+
+const LIXEIRA =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+  + '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>'
+  + '</svg>';
 
 function iconeFavorito(nome, ehPasta) {
   const span = document.createElement('span');

@@ -333,7 +333,34 @@ export async function navegar(caminho, { historico = true } = {}) {
   atualizarEspaco(caminho);
   projetoAtual.atualizar(caminho).catch(() => {});
 
+  document.dispatchEvent(new CustomEvent('explorer:navegou', { detail: { caminho } }));
   call('app.ultimaPasta', { caminho }).catch(() => {});
+}
+
+/** Estado que uma aba precisa guardar para ser restaurada depois. */
+export function estadoAba() {
+  return {
+    caminho: state.caminho,
+    historico: [...state.historico],
+    indiceHistorico: state.indiceHistorico,
+    selecao: [...state.selecao],
+  };
+}
+
+/** Restaura uma aba: histórico, pasta e seleção. */
+export async function aplicarAba(estado) {
+  if (!estado?.caminho) return;
+
+  state.historico = [...(estado.historico ?? [])];
+  state.indiceHistorico = estado.indiceHistorico ?? -1;
+
+  await navegar(estado.caminho, { historico: false });
+
+  if (Array.isArray(estado.selecao) && estado.selecao.length > 0) {
+    state.selecao = new Set(estado.selecao);
+    aplicarSelecao();
+    preview.mostrar(selecionados()).catch(() => {});
+  }
 }
 
 export function recarregar() {
@@ -1169,6 +1196,7 @@ async function aoMenuContexto(evento) {
     if (ehPasta && umSo) {
       itens.push(
         { rotulo: t('menu.registrarProjeto'), acao: () => dialogs.registrarProjeto(primeiro.Caminho ?? primeiro.caminho) },
+        { rotulo: t('menu.pastasMaiores'), acao: () => call('app.novaJanela', { relatorio: primeiro.Caminho ?? primeiro.caminho }) },
         { rotulo: t('menu.criarPastasModelo'), acao: () => dialogs.pastasModelo(primeiro.Caminho ?? primeiro.caminho, recarregar) },
         { rotulo: t('menu.novo'), submenu: await submenuNovo(primeiro.Caminho ?? primeiro.caminho) },
       );
@@ -1183,6 +1211,12 @@ async function aoMenuContexto(evento) {
     itens.push({ rotulo: t('menu.novaPasta'), acao: () => novaPasta() });
     itens.push({ rotulo: t('menu.colar'), atalho: 'Ctrl+V', acao: colar });
     itens.push({ separador: true });
+
+    if (state.caminho) {
+      itens.push({ rotulo: t('menu.registrarProjeto'), acao: () => dialogs.registrarProjeto(state.caminho) });
+      itens.push({ rotulo: t('menu.pastasMaiores'), acao: () => call('app.novaJanela', { relatorio: state.caminho }) });
+    }
+
     itens.push({ rotulo: t('menu.novoProjeto'), acao: () => dialogs.novoProjeto(state.caminho, criado) });
 
     if (state.caminho) {

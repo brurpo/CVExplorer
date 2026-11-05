@@ -516,12 +516,13 @@ public sealed class FfmpegCommandTests
     public void MenuDePresetsCobreTodosOsFormatos()
     {
         var presets = VideoPlanBuilder.Presets();
-        Assert.Equal(12, presets.Count);
+        Assert.Equal(13, presets.Count);
 
         foreach (var esperado in new[]
                  {
                      "prores422_mov", "prores4444_mov", "dnxhr_sq_mov", "dnxhr_hq_mov",
-                     "dnxhr_sq_mxf", "dnxhr_hq_mxf", "xdcam", "dxv3", "dxv3_alpha", "hap_alpha", "h264", "h264_50",
+                     "dnxhr_sq_mxf", "dnxhr_hq_mxf", "xdcam", "dxv3", "dxv3_alpha", "hap_alpha",
+                     "h264", "h264_50", "h264_leve",
                  })
         {
             Assert.Contains(presets, p => p.Chave == esperado);
@@ -871,5 +872,60 @@ public sealed class ReproducaoDiretaTests
         }
 
         Assert.False(ReproducaoDireta.Suportado(info));
+    }
+}
+
+public sealed class H264LeveTests
+{
+    private static MediaInfo Origem(int largura, int altura) => new()
+    {
+        Caminho = @"C:\a.mov",
+        Largura = largura,
+        Altura = altura,
+        Fps = 30,
+        PixFmt = "yuv422p",
+        Codec = "prores",
+    };
+
+    [Fact]
+    public void PresetLeveLimita1080pComCbrBaixo()
+    {
+        var plano = VideoPlanBuilder.Choose(Origem(3840, 2160), "h264_leve", espacoLivre: 0);
+
+        Assert.Equal("h264_leve", plano.Perfil);
+        Assert.Equal(1920, plano.LarguraMaxima);
+        Assert.Equal(4, plano.AlvoMbps);
+        Assert.True(plano.BitrateFixo);
+        Assert.Equal(".mp4", plano.Container);
+    }
+
+    [Fact]
+    public void PresetLeveGeraComandoComEscalaEAudio128()
+    {
+        var info = Origem(3840, 2160);
+        info.TemAudio = true;
+        var plano = VideoPlanBuilder.Choose(info, "h264_leve", espacoLivre: 0);
+
+        var args = FfmpegCommandBuilder.Build(info, plano, "entrada.mov", "saida.mp4");
+        var linha = string.Join(" ", args);
+
+        Assert.Contains("scale='min(1920\\,iw)':-2", linha);
+        Assert.Contains("-b:v 4M", linha);
+        Assert.Contains("-minrate 4M", linha);
+        Assert.Contains("-maxrate 4M", linha);
+        Assert.Contains("-b:a 128k", linha);
+        Assert.Contains("+faststart", linha);
+    }
+
+    [Fact]
+    public void PresetLeveNaoEsticaVideoMenor()
+    {
+        var info = Origem(1280, 720);
+        var plano = VideoPlanBuilder.Choose(info, "h264_leve", espacoLivre: 0);
+
+        var linha = string.Join(" ", FfmpegCommandBuilder.Build(info, plano, "e.mov", "s.mp4"));
+
+        // A escala pede no máximo 1920: em 720p o ffmpeg mantém a origem.
+        Assert.Contains("min(1920\\,iw)", linha);
     }
 }

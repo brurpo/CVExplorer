@@ -5,6 +5,8 @@ import * as lateral from './projects.js';
 import * as projetoAtual from './projetoAtual.js';
 import * as dialogs from './dialogs.js';
 import * as preview from './preview.js';
+import * as relatorio from './relatorio.js';
+import * as abas from './abas.js';
 import * as ui from './ui.js';
 import { state } from './state.js';
 
@@ -31,6 +33,12 @@ async function iniciar() {
   preview.iniciarPreview();
   projetoAtual.iniciarProjetoAtual();
   lateral.iniciarLateral({ aoNavegar: (caminho) => explorer.navegar(caminho) });
+
+  // Janela de relatório ("pastas maiores"): cobre o explorador, que fica só de fundo.
+  if (info.relatorio) {
+    document.body.dataset.modo = 'relatorio';
+    relatorio.iniciar(info.relatorio);
+  }
 
   document.getElementById('btn-novo').addEventListener('click', () => {
     dialogs.novoProjeto(state.caminho, (criado) => {
@@ -139,6 +147,26 @@ async function iniciar() {
       } else {
         document.getElementById('btn-nova-janela').click();
       }
+      return;
+    }
+
+    // Abas: Ctrl+T nova, Ctrl+W fecha, Ctrl+Tab anda entre elas.
+    if (evento.key.toLowerCase() === 't') {
+      evento.preventDefault();
+      abas.novaAba(state.caminho);
+      return;
+    }
+
+    if (evento.key.toLowerCase() === 'w') {
+      evento.preventDefault();
+      abas.fecharAtiva();
+      return;
+    }
+
+    if (evento.key === 'Tab') {
+      evento.preventDefault();
+      abas.proximaAba(evento.shiftKey ? -1 : 1);
+      return;
     }
 
     if (evento.key === ',') {
@@ -153,6 +181,7 @@ async function iniciar() {
 
   const inicial = await caminhoInicial(config);
   if (inicial) {
+    abas.iniciar({ caminho: inicial, extras: info.abasIniciais ?? [] });
     await explorer.navegar(inicial);
   }
 

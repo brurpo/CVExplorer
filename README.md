@@ -90,8 +90,8 @@ git push -u origin HEAD
 No estilo do Explorer, sem lista de projetos:
 
 - **Favoritos**: pastas e arquivos que você fixa. Arraste itens da lista para cá (ou use o `+`) e
-  remova pelo menu de contexto. Pasta abre na navegação; arquivo abre no app padrão. Ficam em
-  `config.json` → `Favoritos`.
+  remova pelo menu de contexto — ou pela **lixeira vermelha** que aparece na linha ao passar o
+  mouse. Pasta abre na navegação; arquivo abre no app padrão. Ficam em `config.json` → `Favoritos`.
 - **Este Computador**: unidades com **letra**, rótulo, espaço livre, **ícone** (disco empilhado em
   **amarelo** para local, globo em azul para rede) e o **tipo** (`Rede` para mapeadas/UNC, `Local`
   para fixas). Pastas adicionadas em *Raízes* aparecem como pastas.
@@ -108,8 +108,10 @@ No estilo do Explorer, sem lista de projetos:
 - **Recent projects**: os últimos 12 projetos visitados ficam guardados e alimentam o chip do topo
   quando você abre uma pasta sem marcador por perto. A barra lateral **não** lista projetos: com
   milhares deles, uma lista ali vira ruído — quem responde "onde estou" é a detecção pela pasta atual.
-- **Definir projeto na pasta atual**: pelo próprio chip, sem mover nem criar nada — só grava o
-  marcador. Também funciona em pasta já existente com estrutura antiga.
+- **Definir projeto na pasta atual**: pelo próprio chip, ou com o botão direito em qualquer pasta
+  → **Definir essa pasta como projeto…** (também no vazio da grade, valendo para a pasta aberta),
+  sem mover nem criar nada — só grava o marcador. Também funciona em pasta já existente com
+  estrutura antiga.
 - **Criar projeto**: cria a pasta, grava o marcador e monta **somente as pastas marcadas**
   na árvore do modelo. Nada é duplicado, nada é sobrescrito — rodar duas vezes não cria nada novo.
 - **Auto-detecção opcional**: raízes configuradas são varridas em busca de `.cvproj` e de
@@ -138,6 +140,16 @@ No estilo do Explorer, sem lista de projetos:
 - **Colunas redimensionáveis**: as **cinco** colunas têm alça — arraste a divisória no cabeçalho
   (inclusive *Nome*, que é a mais larga). Duplo clique na alça volta ao padrão. O cabeçalho
   compensa a barra de rolagem (`--sbw`), então a divisória fica exatamente sobre a coluna dos itens.
+- **Abas**: cada aba guarda pasta, histórico e seleção. `Ctrl+T` abre, `Ctrl+W` fecha,
+  `Ctrl+Tab`/`Ctrl+Shift+Tab` andam entre elas; o **+** da barra abre outra. `Ctrl+clique` soma ou
+  tira uma aba da seleção e `Shift+clique` seleciona o intervalo. Arraste as abas selecionadas
+  **para fora do app** para destacá-las numa janela nova, ou **para dentro de outra janela** para
+  juntá-las lá (se a janela ficar sem abas, ela fecha — é assim que se funde uma janela inteira
+  noutra). Como no arraste de arquivos, quem resolve o alvo é o host, pelo cursor real.
+- **Pastas maiores**: clique com o botão direito numa pasta → **Pastas maiores…** abre uma janela
+  com o tamanho de cada subpasta direta, do maior para o menor (barra, tamanho, % do total e
+  contagem de arquivos). A varredura roda em paralelo no host; duplo clique numa linha abre aquela
+  pasta numa janela nova.
 - **Janelas múltiplas**: `Ctrl+N` (ou o ícone no topo) abre outra janela na pasta atual, com
   histórico e seleção independentes. Configuração, miniaturas e projetos são compartilhados.
 - **Arrastar entre janelas**: arraste itens de uma janela e solte em outra — a janela de destino
@@ -320,6 +332,12 @@ define codec, container e áudio:
 | MXF | XDCAM HD422 50 Mbps | `mpeg2video` CBR 50 Mbps, 4:2:2 | `.mxf` (OP1a) | PCM 24 bits |
 | MP4 | H.264 — automático | encoder H.264 disponível, bitrate acompanha a origem | `.mp4` | AAC 320 kbps |
 | MP4 | H.264 — 50 Mbps | mesmo encoder, **CBR 50 Mbps** (`-minrate/-maxrate/-bufsize`) | `.mp4` | AAC 320 kbps |
+| MP4 | H.264 leve (WhatsApp) | **CBR 4 Mbps**, largura máxima 1920 px, `+faststart` | `.mp4` | AAC 128 kbps |
+
+O preset *leve* existe para tirar o arquivo do estúdio: 4 Mbps com 1920 px de teto cabe nos limites
+de anexo do WhatsApp sem virar sopa de blocos, mantém 30/60 fps e o áudio em 128 kbps. `-vf
+scale='min(1920\,iw)':-2` só reduz o que passa de 1920 de largura (altura sempre par) — nada de
+upscale.
 
 Com **vários vídeos selecionados** o mesmo preset vale para todos: o menu mostra *Converter N
 arquivos…* e a conversão roda em sequência com um card só (o original de cada um é preservado).

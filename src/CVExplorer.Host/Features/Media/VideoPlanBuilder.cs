@@ -31,6 +31,9 @@ public sealed class VideoPlan
     /// <summary>Preset de bitrate fixo (H.264 50 Mbps, XDCAM 50 Mbps): pede CBR ao encoder.</summary>
     public bool BitrateFixo { get; set; }
 
+    /// <summary>Reduz a largura até este valor (0 = mantém a original). Ex.: 1920 no preset "leve".</summary>
+    public int LarguraMaxima { get; set; }
+
     /// <summary>Por que este perfil foi escolhido (mostrado na interface).</summary>
     public string? Motivo { get; set; }
 
@@ -74,7 +77,8 @@ public static class VideoPlanBuilder
         string Container = ".mov",
         string Audio = "pcm24",
         bool Fixo = false,
-        bool Alpha = false);
+        bool Alpha = false,
+        int LarguraMaxima = 0);
 
     /// <summary>
     /// Escada usada pela escolha automatica e pelo ajuste de espaco. Só perfis de
@@ -108,6 +112,7 @@ public static class VideoPlanBuilder
         ("hap_alpha", new PerfilInfo("HAP Alpha — .mov", "hap", "rgba", 0, 370, "playback com transparência (DXT5)", ".mov", "pcm16", Alpha: true)),
         ("h264", new PerfilInfo("H.264 (auto) — .mp4", "h264", "yuv420p", 0, 20, "entrega/aprovação", ".mp4", "aac")),
         ("h264_50", new PerfilInfo("H.264 50 Mbps — .mp4", "h264", "yuv420p", 0, 50, "entrega em alta qualidade", ".mp4", "aac", Fixo: true)),
+        ("h264_leve", new PerfilInfo("H.264 leve (WhatsApp) — .mp4", "h264", "yuv420p", 0, 4, "envio por WhatsApp e celular", ".mp4", "aac128", Fixo: true, LarguraMaxima: 1920)),
     };
 
     private static IEnumerable<(string Chave, PerfilInfo Info)> Todos => Ordem.Concat(Extras);
@@ -144,6 +149,7 @@ public static class VideoPlanBuilder
             OrigemMbps = info.BitrateVideoMbps,
             AlvoMbps = Alvo(perfil, info),
             BitrateFixo = perfil.Fixo,
+            LarguraMaxima = perfil.LarguraMaxima,
             Desentrelacar = info.Interlaced,
         };
 
