@@ -56,8 +56,9 @@ export function iniciar(caminho) {
   prepararBarra();
   prepararSom(null);
 
-  // PDF fica com uma barra própria (páginas, zoom e as edições).
-  if (ext === 'pdf') {
+  // PDF fica com uma barra própria (páginas, zoom e as edições). O `.pdf.bak` que o
+  // próprio app cria também abre aqui.
+  if (ext === 'pdf' || caminho.toLowerCase().endsWith('.pdf.bak')) {
     const acoes = document.getElementById('previa-rapida-acoes');
     if (acoes) acoes.hidden = true;
     abrirPdf(caminho).catch(falhou);

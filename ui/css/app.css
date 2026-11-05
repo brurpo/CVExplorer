@@ -1754,8 +1754,7 @@ body[data-modo="previa"] {
   display: flex;
   align-items: center;
   padding: 0 2px;
-  color: #111;
-  background: rgba(120, 175, 255, 0.18);
+  background: transparent;
   white-space: pre;
   pointer-events: none;
 }

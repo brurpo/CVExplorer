@@ -186,12 +186,16 @@ No estilo do Explorer, sem lista de projetos:
   em vez de abrir outra janela.
 - **PDF na mesma janela do espaço**: o `Espaço` num `.pdf` abre o documento com **pdf.js** —
   `◀ 3 / 12 ▶`, **zoom com o nível à mostra** (`− 135% +`), **Ajustar** (largura da janela) e
-  **Original** (100%). O texto da página é **selecionável e copiável** (camada `TextLayer` do pdf.js
-  por cima do desenho; `Ctrl+C` e **Copiar texto** no botão direito) e **duplo clique numa linha
-  edita o texto no lugar**: ao salvar, o pdf-lib pinta a área original de branco e escreve o texto
-  novo na mesma posição, ajustando o corpo se o texto ficar mais largo. Dá também para **Adicionar
-  texto…** (clique define a posição) — útil em contrato escaneado/assinado — e os **campos de
-  formulário** ficam editáveis na própria página. As operações de página ficam no menu
+  **Original** (100%), e a **roda do mouse dá zoom** mantendo sob o ponteiro o mesmo ponto da
+  página. O texto da página é **selecionável e copiável** (camada `TextLayer` do pdf.js por cima do
+  desenho, com a variável `--scale-factor` que o pdf.js espera — sem ela a seleção pega a linha
+  errada; `Ctrl+C` e **Copiar texto** no botão direito) e **duplo clique numa linha edita o texto no
+  lugar**. A substituição mantém o desenho do documento: o fundo da própria linha cobre o texto
+  antigo (cor amostrada do desenho) e o texto novo sai com a **mesma família** (Arial→Helvetica,
+  Times→Times-Roman, Courier→Courier, com negrito/itálico), o **mesmo corpo** e a **mesma cor**.
+  Dá também para **Adicionar texto…** (clique define a posição) — útil em contrato
+  escaneado/assinado — e os **campos de formulário** ficam editáveis na própria página. As
+  operações de página ficam no menu
   **Páginas** (e no botão direito): **Girar**, mover a página para a esquerda/direita, **Excluir** e
   **Extrair** (gera `nome - página N.pdf` ao lado). **Salvar** grava por cima deixando
   `nome.pdf.bak`; **Descartar** volta ao arquivo original. Não é reescrita de texto (reflow): é

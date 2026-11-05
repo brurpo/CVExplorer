@@ -305,7 +305,7 @@
   "pdf.adicionarTextoRotulo": "Texto a inserir",
   "pdf.adicionarTextoPlaceholder": "Digite o texto",
   "pdf.textoInserido": "Texto adicionado — salve para gravar no PDF",
-  "pdf.dica": "Duplo clique no texto para editar no lugar · botão direito abre as páginas",
+  "pdf.dica": "Duplo clique no texto para editar no lugar · roda do mouse dá zoom · botão direito abre as páginas",
   "pdf.excluir": "Excluir",
   "pdf.extrair": "Extrair",
   "pdf.salvar": "Salvar",

@@ -189,12 +189,37 @@ async function desenharCamadas(pagina, viewport) {
   estado.camadaAnotacoes.replaceChildren();
 
   try {
+    // O TextLayer posiciona as linhas com `calc(var(--scale-factor) * Npx)`: sem essa
+    // variável o texto fica com tamanho errado e a seleção pega a linha errada.
+    estado.camadaTexto.style.setProperty('--scale-factor', String(viewport.scale));
+    estado.camadaTexto.style.setProperty('--total-scale-factor', String(viewport.scale));
+
     const texto = new lib.TextLayer({
       textContentSource: pagina.streamTextContent(),
       container: estado.camadaTexto,
       viewport,
     });
     await texto.render();
+
+    // Família real de cada linha (ArialMT, TimesNewRomanPSMT…): o texto editado sai com
+    // o parente mais próximo entre as fontes padrão do PDF.
+    const conteudo = await pagina.getTextContent();
+    const fontePorTexto = new Map();
+    for (const item of conteudo.items) {
+      if (!item.str || fontePorTexto.has(item.str)) continue;
+      let nome = '';
+      try {
+        nome = pagina.commonObjs.get(item.fontName)?.name ?? '';
+      } catch {
+        nome = '';
+      }
+      if (nome) fontePorTexto.set(item.str, nome);
+    }
+
+    for (const span of estado.camadaTexto.querySelectorAll('span')) {
+      const nome = fontePorTexto.get(span.textContent);
+      if (nome) span.dataset.fonte = nome;
+    }
   } catch {
     // sem camada de texto a página continua visível; só não dá para selecionar
   }
@@ -496,16 +521,109 @@ function ligarBarra() {
     inserirTextoDaPosicao(evento);
   });
 
+  // Roda do mouse dá zoom, mantendo sob o ponteiro o mesmo ponto da página.
+  document.getElementById('previa-rapida-corpo')?.addEventListener('wheel', (evento) => {
+    if (!estado) return;
+
+    evento.preventDefault();
+    const area = estado.area;
+    const retangulo = area.getBoundingClientRect();
+    const fracaoX = area.scrollWidth ? (evento.clientX - retangulo.left + area.scrollLeft) / area.scrollWidth : 0.5;
+    const fracaoY = area.scrollHeight ? (evento.clientY - retangulo.top + area.scrollTop) / area.scrollHeight : 0.5;
+
+    const atual = estado.escalaAtual ?? 1;
+    const passo = Math.sign(evento.deltaY) * Math.max(0.08, Math.min(0.3, Math.abs(evento.deltaY) / 400));
+    const alvo = Math.min(4, Math.max(0.2, atual - passo));
+
+    if (Math.abs(alvo - atual) < 0.001) return;
+
+    estado.escala = alvo;
+    desenhar()
+      .then(() => {
+        area.scrollLeft = fracaoX * area.scrollWidth - (evento.clientX - retangulo.left);
+        area.scrollTop = fracaoY * area.scrollHeight - (evento.clientY - retangulo.top);
+      })
+      .catch(() => {});
+  }, { passive: false });
+
   document.addEventListener('keydown', atalhos);
   ligada = true;
   atualizarBarra();
 }
 
 /**
- * Editar texto que já existe na página: duplo clique sobre a linha abre o campo no lugar,
- * e o que for confirmado vira uma **substituição** — ao salvar, o pdf-lib pinta a área
- * original de branco e escreve o texto novo por cima (mesma posição e corpo). Não é
- * reescrita do conteúdo do PDF: é o jeito que funciona em contrato assinado/escaneado.
+ * Família da fonte usada no PDF, traduzida para uma das 14 fontes padrão do pdf-lib.
+ * É o mais próximo que dá para chegar sem embutir o programa da fonte original (os PDFs
+ * de escritório usam subconjuntos com codificação própria).
+ */
+function familiaPadrao(nome = '', negrito = false, italico = false) {
+  const fonte = nome.toLowerCase();
+  const peso = negrito || /bold|black|heavy|semibold/.test(fonte);
+  const estilo = italico || /italic|oblique/.test(fonte);
+
+  if (/courier|mono|consol/.test(fonte)) {
+    return estilo ? 'CourierOblique' : 'Courier';
+  }
+
+  if (/times|georgia|garamond|serif/.test(fonte)) {
+    if (peso && estilo) return 'TimesRomanBoldItalic';
+    if (peso) return 'TimesRomanBold';
+    if (estilo) return 'TimesRomanItalic';
+    return 'TimesRoman';
+  }
+
+  if (peso && estilo) return 'HelveticaBoldOblique';
+  if (peso) return 'HelveticaBold';
+  if (estilo) return 'HelveticaOblique';
+  return 'Helvetica';
+}
+
+/** Cor da tinta e do fundo na área da linha: o texto novo tem de casar com o original. */
+function amostrarCores(span) {
+  try {
+    const caixa = estado.caixa.getBoundingClientRect();
+    const r = span.getBoundingClientRect();
+    const proporcao = estado.canvas.width / (estado.caixa.clientWidth || 1);
+    const x = Math.max(0, Math.round((r.left - caixa.left) * proporcao));
+    const y = Math.max(0, Math.round((r.top - caixa.top) * proporcao));
+    const w = Math.min(estado.canvas.width - x, Math.max(1, Math.round(r.width * proporcao)));
+    const h = Math.min(estado.canvas.height - y, Math.max(1, Math.round(r.height * proporcao)));
+
+    const dados = estado.canvas.getContext('2d').getImageData(x, y, w, h).data;
+    const luminancia = (i) => 0.2126 * dados[i] + 0.7152 * dados[i + 1] + 0.0722 * dados[i + 2];
+
+    // Ordena por brilho: a tinta é o que há de mais escuro na caixa, o fundo é o mais claro.
+    const indices = [];
+    for (let i = 0; i < dados.length; i += 4) indices.push(i);
+    indices.sort((a, b) => luminancia(a) - luminancia(b));
+
+    const media = (lista) => {
+      const soma = [0, 0, 0];
+      for (const i of lista) {
+        soma[0] += dados[i];
+        soma[1] += dados[i + 1];
+        soma[2] += dados[i + 2];
+      }
+      return soma.map((v) => v / lista.length / 255);
+    };
+
+    const corteTinta = Math.max(1, Math.floor(indices.length * 0.08));
+    const corteFundo = Math.floor(indices.length * 0.7);
+
+    return {
+      texto: media(indices.slice(0, corteTinta)),
+      fundo: media(indices.slice(corteFundo)),
+    };
+  } catch {
+    return { fundo: [1, 1, 1], texto: [0, 0, 0] };
+  }
+}
+
+/**
+ * Editar texto que já existe na página: duplo clique sobre a linha abre o campo no lugar e
+ * o texto confirmado substitui o original. Ao salvar, a área é tapada com a **cor do fundo
+ * da própria linha** e o texto novo é escrito com a **mesma família, corpo e cor** — sem
+ * caixa branca nem fonte estranha no meio do documento.
  */
 function ligarEdicaoDeTexto() {
   if (!estado || estado.edicaoDeTexto) return;
@@ -534,6 +652,10 @@ function abrirEditorDeTexto(span) {
   entrada.className = 'pdf-edicao';
   entrada.value = span.textContent;
 
+  // O campo se parece com a linha que está sendo editada (mesma cor de tinta e fundo).
+  const cores = amostrarCores(span);
+  const paraCss = (cor) => `rgb(${cor.map((v) => Math.round(v * 255)).join(',')})`;
+
   Object.assign(entrada.style, {
     left: `${retangulo.left - caixa.left}px`,
     top: `${retangulo.top - caixa.top}px`,
@@ -541,6 +663,8 @@ function abrirEditorDeTexto(span) {
     height: `${Math.max(12, retangulo.height)}px`,
     fontSize: estilo.fontSize,
     fontFamily: estilo.fontFamily,
+    color: paraCss(cores.texto),
+    background: paraCss(cores.fundo),
   });
 
   estado.caixa.appendChild(entrada);
@@ -584,6 +708,9 @@ function registrarEdicaoTexto(span, texto, retangulo, caixa, tamanhoCss) {
   const [x1, y1] = estado.viewport.convertToPdfPoint(esquerda, topo);
   const [x2, y2] = estado.viewport.convertToPdfPoint(esquerda + retangulo.width, topo + retangulo.height);
 
+  const cores = amostrarCores(span);
+  const fonte = span.dataset.fonte ?? '';
+
   estado.edicoes.push({
     pagina: estado.pagina,
     original: span.textContent,
@@ -593,6 +720,9 @@ function registrarEdicaoTexto(span, texto, retangulo, caixa, tamanhoCss) {
     largura: Math.max(2, Math.abs(x2 - x1)),
     altura: Math.max(2, Math.abs(y2 - y1)),
     tamanho: Math.max(2, parseFloat(tamanhoCss) / (estado.escalaAtual || 1)),
+    fonte: familiaPadrao(fonte, span.dataset.negrito === '1', span.dataset.italico === '1'),
+    fundo: cores.fundo,
+    cor: cores.texto,
     texto,
   });
 
@@ -620,12 +750,14 @@ function mostrarEdicoesDeTexto() {
     const marcador = document.createElement('div');
     marcador.className = 'pdf-texto-editado';
     marcador.textContent = edicao.texto;
+    const cor = edicao.cor ?? [0, 0, 0];
     Object.assign(marcador.style, {
       left: `${Math.min(x1, x2)}px`,
       top: `${Math.min(y1, y2)}px`,
       minWidth: `${Math.abs(x2 - x1)}px`,
       height: `${Math.abs(y2 - y1)}px`,
       fontSize: `${edicao.tamanho * (estado.escalaAtual || 1)}px`,
+      color: `rgb(${cor.map((v) => Math.round(v * 255)).join(',')})`,
     });
 
     // Esconde o texto original que ficou embaixo (o overlay cobre, mas some do clique).
@@ -639,30 +771,35 @@ function mostrarEdicoesDeTexto() {
   void caixa;
 }
 
-/** Leva as substituições para dentro do PDF (branco por cima + texto novo). */
+/** Leva as substituições para dentro do PDF: fundo da própria linha + texto original. */
 async function aplicarEdicoesDeTexto(documento, lib) {
   if (!estado || estado.edicoes.length === 0) return;
-
-  const fonte = await documento.embedFont(lib.StandardFonts.Helvetica);
 
   for (const edicao of estado.edicoes) {
     const pagina = documento.getPage(edicao.pagina - 1);
     if (!pagina) continue;
 
+    const fundo = edicao.fundo ?? [1, 1, 1];
+    const cor = edicao.cor ?? [0, 0, 0];
+
+    // Tapa o texto antigo com a cor do fundo da linha (não com um branco fixo).
     pagina.drawRectangle({
       x: edicao.x - 1,
       y: edicao.y - 1,
       width: edicao.largura + 2,
       height: edicao.altura + 2,
-      color: lib.rgb(1, 1, 1),
+      color: lib.rgb(fundo[0], fundo[1], fundo[2]),
     });
 
     if (!edicao.texto.trim()) continue;
 
+    const fonte = await documento.embedFont(lib.StandardFonts[edicao.fonte] ?? lib.StandardFonts.Helvetica);
+
     let tamanho = edicao.tamanho;
     const largura = fonte.widthOfTextAtSize(edicao.texto, tamanho);
     if (largura > edicao.largura) {
-      tamanho = Math.max(2, tamanho * (edicao.largura / largura));
+      // Só encolhe o suficiente para caber; o corpo original é o alvo.
+      tamanho = Math.max(edicao.tamanho * 0.6, tamanho * (edicao.largura / largura));
     }
 
     pagina.drawText(edicao.texto, {
@@ -670,7 +807,7 @@ async function aplicarEdicoesDeTexto(documento, lib) {
       y: edicao.y + edicao.altura * 0.18,
       size: tamanho,
       font: fonte,
-      color: lib.rgb(0, 0, 0),
+      color: lib.rgb(cor[0], cor[1], cor[2]),
     });
   }
 }
