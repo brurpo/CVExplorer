@@ -115,8 +115,10 @@ No estilo do Explorer, sem lista de projetos:
 - **Auto-detecção opcional**: raízes configuradas são varridas em busca de `.cvproj` e de
   estruturas antigas reconhecíveis (`PACOTE_GRAFICO`, `CHAMADAS`, `ELEMENTOS`, `PROJETOS`…),
   marcadas como *sem marcador*. É complemento, não requisito.
-- **Modelo editável**: a árvore padrão fica em `%LOCALAPPDATA%\CVExplorer\modelo-projeto.json`.
-  O token `{QUADRO}` é substituído pelos nomes informados (ex.: `CHAMADA 01`, `CHAMADA 02`).
+- **Modelo editável**: a árvore padrão fica em `%LOCALAPPDATA%\CVExplorer\modelo-projeto.json` — é o
+  único lugar onde a estrutura das pastas é definida (nada disso é fixo no código). Editar o arquivo
+  vale na hora, sem reiniciar o app. O token `{QUADRO}` é substituído pelos nomes informados
+  (ex.: `CHAMADA 01`, `CHAMADA 02`).
 
 ### Explorador
 - Grade/lista com renderização virtualizada (pastas com milhares de itens continuam fluidas).

@@ -48,8 +48,28 @@ public static class TemplateCatalog
                     Nome = QuadroToken,
                     Filhos = new List<TemplateNode>
                     {
-                        ElementosPadrao(),
-                        new() { Nome = "PROJETOS", Filhos = ProjetosPadrao(comMaya: true) },
+                        new()
+                        {
+                            Nome = "ELEMENTOS",
+                            Filhos = new List<TemplateNode>
+                            {
+                                new() { Nome = "AUDIO" },
+                                new() { Nome = "MOV" },
+                                new() { Nome = "SEQUENCIAS" },
+                                new() { Nome = "IMAGENS" },
+                                new() { Nome = "FONTS" },
+                            },
+                        },
+                        new()
+                        {
+                            Nome = "PROJETOS",
+                            Filhos = new List<TemplateNode>
+                            {
+                                new() { Nome = "AE" },
+                                new() { Nome = "PSD" },
+                                new() { Nome = "AI" },
+                            },
+                        },
                         new()
                         {
                             Nome = "REFERENCIAS",
@@ -59,7 +79,6 @@ public static class TemplateCatalog
                                 new() { Nome = "IMAGENS" },
                             },
                         },
-                        new() { Nome = "SAIDA" },
                     },
                 },
             },

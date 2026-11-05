@@ -28,7 +28,28 @@ public sealed class AppHost
 
     public ProjectService Projects { get; } = new();
 
-    public List<TemplateNode> Template { get; private set; }
+    private List<TemplateNode>? _template;
+    private DateTime _templateMtime;
+
+    /// <summary>
+    /// Estrutura de pastas do modelo. Vem sempre de %LOCALAPPDATA%\CVExplorer\modelo-projeto.json:
+    /// se o arquivo for editado com o app aberto, a próxima leitura já usa a versão nova.
+    /// </summary>
+    public List<TemplateNode> Template
+    {
+        get
+        {
+            var arquivo = AppPaths.TemplateFile;
+            var mtime = File.Exists(arquivo) ? File.GetLastWriteTimeUtc(arquivo) : DateTime.MinValue;
+            if (_template is null || mtime != _templateMtime)
+            {
+                _template = TemplateCatalog.LoadOrSeed(arquivo);
+                _templateMtime = File.Exists(arquivo) ? File.GetLastWriteTimeUtc(arquivo) : DateTime.MinValue;
+            }
+
+            return _template;
+        }
+    }
 
     public ThumbnailService Thumbs { get; }
 
@@ -69,7 +90,7 @@ public sealed class AppHost
     {
         AppPaths.EnsureCreated();
         Store.Load();
-        Template = TemplateCatalog.LoadOrSeed(AppPaths.TemplateFile);
+        _ = Template; // cria o modelo-projeto.json na primeira execução
 
         Ffmpeg = new FfmpegLocator(Settings);
         Probe = new MediaProbe(Ffmpeg);
@@ -188,7 +209,11 @@ public sealed class AppHost
         return Task.CompletedTask;
     }
 
-    public void RecarregarTemplate() => Template = TemplateCatalog.LoadOrSeed(AppPaths.TemplateFile);
+    public void RecarregarTemplate()
+    {
+        _template = null;
+        _ = Template;
+    }
 }
 
 /// <summary>

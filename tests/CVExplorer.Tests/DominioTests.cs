@@ -82,7 +82,7 @@ public sealed class TemplateCatalogTests
     {
         var filhos = TemplateCatalog.FilhosPara(Modelo, "CENA_01", "EDITORIA", raizDeProjeto: false);
 
-        Assert.Equal(new[] { "ELEMENTOS", "PROJETOS", "REFERENCIAS", "SAIDA" }, filhos.Select(f => f.Nome));
+        Assert.Equal(new[] { "ELEMENTOS", "PROJETOS", "REFERENCIAS" }, filhos.Select(f => f.Nome));
     }
 
     [Fact]
@@ -100,11 +100,24 @@ public sealed class TemplateCatalogTests
 
         Assert.NotNull(quadro);
         Assert.Contains(quadro!.Filhos, f => f.Nome == "ELEMENTOS");
-        // o quadro usa a mesma lista de projetos do pacote grafico, com Maya e Blender
-        var projetos = quadro.Filhos.Single(f => f.Nome == "PROJETOS");
-        Assert.Equal(new[] { "AE", "PSD", "AI", "BLENDER", "MAYA" }, projetos.Filhos.Select(f => f.Nome));
-        // e o SAIDA, que tambem e padrao no quadro
-        Assert.Contains(quadro.Filhos, f => f.Nome == "SAIDA");
+    }
+
+    [Fact]
+    public void QuadroSegueOModeloDoArquivoSemNomesFixos()
+    {
+        using var temp = new PastaTemporaria();
+        var arquivo = temp.CriarArquivo("modelo-projeto.json", """
+        [
+          { "Nome": "EDITORIA", "Filhos": [
+            { "Nome": "{QUADRO}", "Filhos": [ { "Nome": "CUSTOM_A" }, { "Nome": "CUSTOM_B" } ] }
+          ] }
+        ]
+        """);
+
+        var modelo = TemplateCatalog.LoadOrSeed(arquivo);
+        var filhos = TemplateCatalog.FilhosPara(modelo, "CENA_01", "EDITORIA", raizDeProjeto: false);
+
+        Assert.Equal(new[] { "CUSTOM_A", "CUSTOM_B" }, filhos.Select(f => f.Nome));
     }
 
     [Fact]
