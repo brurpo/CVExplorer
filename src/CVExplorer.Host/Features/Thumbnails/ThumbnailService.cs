@@ -82,6 +82,9 @@ public sealed class ThumbnailService
     private readonly SemaphoreSlim _limite = new(Math.Clamp(Environment.ProcessorCount / 4, 4, 12));
     private readonly ConcurrentDictionary<string, Task<ThumbnailResult>> _emAndamento = new();
 
+    /// <summary>Geração em curso por caminho, para poder cancelar quando o arquivo vai ser movido/apagado.</summary>
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancelaveis = new();
+
     public ThumbnailService(AppSettings settings, FfmpegLocator ffmpeg)
     {
         _settings = settings;
@@ -136,7 +139,13 @@ public sealed class ThumbnailService
             return new ThumbnailResult { Chave = chave, Pronta = false, Renderizar = "pdf" };
         }
 
-        var task = _emAndamento.GetOrAdd(chave, _ => GenerateAsync(caminho, destino, size, chave, ct));
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromMinutes(2));
+
+        var chaveCancelamento = Normalizar(caminho) + "|" + chave;
+        _cancelaveis[chaveCancelamento] = cts;
+
+        var task = _emAndamento.GetOrAdd(chave, _ => GenerateAsync(caminho, destino, size, chave, cts.Token));
         try
         {
             return await task.ConfigureAwait(false);
@@ -146,9 +155,49 @@ public sealed class ThumbnailService
             if (task.IsCompleted)
             {
                 _emAndamento.TryRemove(chave, out _);
+                if (_cancelaveis.TryRemove(chaveCancelamento, out var dono))
+                {
+                    dono.Dispose();
+                }
             }
         }
     }
+
+    /// <summary>
+    /// Cancela as miniaturas em geração destes caminhos. Sem isso, o ffmpeg/Magick que
+    /// está a ler o arquivo impede o Windows de apagá-lo ou movê-lo por alguns segundos.
+    /// </summary>
+    public void Liberar(IEnumerable<string> caminhos)
+    {
+        foreach (var caminho in caminhos ?? Array.Empty<string>())
+        {
+            if (string.IsNullOrWhiteSpace(caminho))
+            {
+                continue;
+            }
+
+            var chaveCaminho = Normalizar(caminho);
+            foreach (var par in _cancelaveis.ToArray())
+            {
+                if (!par.Key.StartsWith(chaveCaminho + "|", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    par.Value.Cancel();
+                }
+                catch
+                {
+                    // já cancelado
+                }
+            }
+        }
+    }
+
+    private static string Normalizar(string caminho) =>
+        Path.GetFullPath(caminho).ToLowerInvariant();
 
     private async Task<ThumbnailResult> GenerateAsync(
         string caminho,

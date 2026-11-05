@@ -12,6 +12,9 @@ export const state = {
   info: {},
   busca: { ativa: false, termo: '', opId: null, resultados: [], pastas: 0, carregando: false },
   clip: { caminhos: [], recortar: false },
+
+  /** Itens recortados (Ctrl+X): ficam esmaecidos até colar ou cancelar. */
+  cortados: new Set(),
   operacoes: new Map(),
 
   /** Ordenação da lista/grade. */

@@ -143,10 +143,18 @@ public sealed class CancellationRegistry
 
         lock (_gate)
         {
-            if (_map.TryGetValue(operacaoId, out var anterior))
+            // O comando anterior ja fechou e descartou o CTS (using no IpcBridge);
+            // reaproveitar o mesmo opId (converter varios arquivos em sequencia) nao pode estourar.
+            if (_map.Remove(operacaoId, out var anterior))
             {
-                anterior.Cancel();
-                anterior.Dispose();
+                try
+                {
+                    anterior.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // ja descartado pelo comando anterior
+                }
             }
 
             _map[operacaoId] = cts;

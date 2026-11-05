@@ -20,6 +20,12 @@ public sealed class MediaInfo
 
     public string Codec { get; set; } = string.Empty;
 
+    /// <summary>Codec da primeira faixa de audio (aac, mp3, pcm_s16le...).</summary>
+    public string AudioCodec { get; set; } = string.Empty;
+
+    /// <summary>Nome do container segundo o ffprobe ("mov,mp4,m4a,3gp,3g2,mj2", "matroska,webm"...).</summary>
+    public string Formato { get; set; } = string.Empty;
+
     public bool TemAlpha { get; set; }
 
     public bool TemAudio { get; set; }
@@ -136,6 +142,7 @@ public sealed class MediaProbe
             var temAudio = false;
             var canais = 2;
             var faixasAudio = 0;
+            var audioCodec = string.Empty;
 
             if (root.TryGetProperty("streams", out var streams))
             {
@@ -150,6 +157,11 @@ public sealed class MediaProbe
                     {
                         temAudio = true;
                         faixasAudio++;
+                        if (audioCodec.Length == 0)
+                        {
+                            audioCodec = GetString(stream, "codec_name") ?? string.Empty;
+                        }
+
                         if (stream.TryGetProperty("channels", out var ch) && ch.TryGetInt32(out var v))
                         {
                             canais = Math.Max(canais, v);
@@ -169,6 +181,7 @@ public sealed class MediaProbe
                 TemAudio = temAudio,
                 AudioCanais = canais,
                 FaixasAudio = faixasAudio,
+                AudioCodec = audioCodec,
                 Largura = GetInt(video.Value, "width"),
                 Altura = GetInt(video.Value, "height"),
                 PixFmt = GetString(video.Value, "pix_fmt") ?? string.Empty,
@@ -198,6 +211,8 @@ public sealed class MediaProbe
 
             if (root.TryGetProperty("format", out var format))
             {
+                info.Formato = GetString(format, "format_name") ?? string.Empty;
+
                 if (double.TryParse(GetString(format, "duration"), NumberStyles.Any, CultureInfo.InvariantCulture, out var dur))
                 {
                     info.DuracaoSegundos = dur;

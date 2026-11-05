@@ -28,6 +28,9 @@ public sealed class VideoPlan
 
     public double AlvoMbps { get; set; }
 
+    /// <summary>Preset de bitrate fixo (H.264 50 Mbps, XDCAM 50 Mbps): pede CBR ao encoder.</summary>
+    public bool BitrateFixo { get; set; }
+
     /// <summary>Por que este perfil foi escolhido (mostrado na interface).</summary>
     public string? Motivo { get; set; }
 
@@ -103,7 +106,8 @@ public static class VideoPlanBuilder
         ("dxv3", new PerfilInfo("DXV3 — .mov", "dxv", "rgba", 0, 185, "Resolume, playback em tempo real", ".mov", "pcm16")),
         ("dxv3_alpha", new PerfilInfo("DXV3 (alpha) — .mov", "dxv", "rgba", 0, 370, "playback com transparência (DXT5)", ".mov", "pcm16", Alpha: true)),
         ("hap_alpha", new PerfilInfo("HAP Alpha — .mov", "hap", "rgba", 0, 370, "playback com transparência (DXT5)", ".mov", "pcm16", Alpha: true)),
-        ("h264", new PerfilInfo("H.264 — .mp4", "h264", "yuv420p", 0, 20, "entrega/aprovação", ".mp4", "aac")),
+        ("h264", new PerfilInfo("H.264 (auto) — .mp4", "h264", "yuv420p", 0, 20, "entrega/aprovação", ".mp4", "aac")),
+        ("h264_50", new PerfilInfo("H.264 50 Mbps — .mp4", "h264", "yuv420p", 0, 50, "entrega em alta qualidade", ".mp4", "aac", Fixo: true)),
     };
 
     private static IEnumerable<(string Chave, PerfilInfo Info)> Todos => Ordem.Concat(Extras);
@@ -139,6 +143,7 @@ public static class VideoPlanBuilder
             Audio = perfil.Audio,
             OrigemMbps = info.BitrateVideoMbps,
             AlvoMbps = Alvo(perfil, info),
+            BitrateFixo = perfil.Fixo,
             Desentrelacar = info.Interlaced,
         };
 

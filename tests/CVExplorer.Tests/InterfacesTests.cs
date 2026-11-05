@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using CVExplorer.Host.Ipc;
 
 namespace CVExplorer.Tests;
 
@@ -121,5 +122,34 @@ public sealed class InterfacesGlobaisTests
         }
 
         throw new InvalidOperationException("Raiz do repositorio nao encontrada.");
+    }
+}
+
+public sealed class CancelamentoPorOperacaoTests
+{
+    [Fact]
+    public void ReaproveitarOMesmoOpIdDepoisDeDescartadoNaoEstoura()
+    {
+        var registro = new CancellationRegistry();
+
+        using (var primeiro = registro.Create("conv-1"))
+        {
+            Assert.False(primeiro.IsCancellationRequested);
+        }
+
+        // Segundo arquivo da mesma conversão usa o mesmo opId.
+        using var segundo = registro.Create("conv-1");
+        Assert.False(segundo.IsCancellationRequested);
+    }
+
+    [Fact]
+    public void CancelarAtingeAOperacaoEmCurso()
+    {
+        var registro = new CancellationRegistry();
+        using var cts = registro.Create("conv-2");
+
+        registro.Cancel("conv-2");
+
+        Assert.True(cts.IsCancellationRequested);
     }
 }

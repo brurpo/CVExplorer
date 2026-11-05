@@ -774,7 +774,7 @@ function criarTelha(item, coluna, linha, largura, altura, alturaLinha) {
   const cat = ehPasta ? 'pasta' : fmt.categoria(ext);
 
   const telha = document.createElement('div');
-  telha.className = `tile${state.selecao.has(caminho) ? ' selecionado' : ''}`;
+  telha.className = `tile${state.selecao.has(caminho) ? ' selecionado' : ''}${state.cortados.has(caminho) ? ' cortado' : ''}`;
   telha.dataset.caminho = caminho;
   telha.style.left = `${PAD + coluna * (largura + GAP)}px`;
   telha.style.top = `${PAD + linha * alturaLinha}px`;
@@ -849,7 +849,7 @@ function renderizarLista(itens) {
     const ext = fmt.extensao(nome);
 
     const linha = document.createElement('div');
-    linha.className = `row${state.selecao.has(caminho) ? ' selecionado' : ''}`;
+    linha.className = `row${state.selecao.has(caminho) ? ' selecionado' : ''}${state.cortados.has(caminho) ? ' cortado' : ''}`;
     linha.dataset.caminho = caminho;
     linha.style.top = `${indice * alturaLinha}px`;
 
@@ -1050,6 +1050,7 @@ function aoClicar(evento) {
 function aplicarSelecao() {
   for (const el of area.querySelectorAll('[data-caminho]')) {
     el.classList.toggle('selecionado', state.selecao.has(el.dataset.caminho));
+    el.classList.toggle('cortado', state.cortados.has(el.dataset.caminho));
   }
   atualizarStatus();
 }
@@ -1088,7 +1089,7 @@ function prefetchSequencia(lista) {
     .catch(() => sequencias.set(caminho, false));
 }
 
-function itensConverterPara(primeiro) {
+function itensConverterPara(alvos) {
   return dialogs.PRESETS_CONVERSAO.flatMap((grupo) => [
     { cabecalho: grupo.grupo },
     ...grupo.itens.map((preset) => {
@@ -1097,7 +1098,7 @@ function itensConverterPara(primeiro) {
         rotulo: indisponivel ? `${preset.rotulo} — ${t('menu.indisponivelCurto')}` : preset.rotulo,
         dica: indisponivel ? t('menu.indisponivelMotivo') : '',
         desabilitado: indisponivel,
-        acao: () => dialogs.converterVideo(primeiro, state.config, preset.chave),
+        acao: () => dialogs.converterVideo(alvos, state.config, preset.chave),
       };
     }),
   ]);
@@ -1137,14 +1138,17 @@ async function aoMenuContexto(evento) {
     );
 
     if (temVideo) {
-      itens.push({ rotulo: t('menu.converter'), acao: () => dialogs.converterVideo(primeiro, state.config) });
+      const videos = selecao.filter((i) => !(i.Pasta ?? i.pasta) && fmt.ehVideo(i.Nome ?? i.nome));
 
-      if (umSo) {
-        itens.push({
-          rotulo: t('menu.converterPara'),
-          submenu: itensConverterPara(primeiro),
-        });
-      }
+      itens.push({
+        rotulo: videos.length > 1 ? t('menu.converterVarios', { n: videos.length }) : t('menu.converter'),
+        acao: () => dialogs.converterVideo(videos, state.config),
+      });
+
+      itens.push({
+        rotulo: t('menu.converterPara'),
+        submenu: itensConverterPara(videos),
+      });
     }
 
     const caminhoPrimeiro = primeiro.Caminho ?? primeiro.caminho;
@@ -1266,6 +1270,8 @@ async function renomearSelecionado() {
   if (!novo || novo === nomeAtual) return;
 
   try {
+    preview.liberar([caminho]);
+    await call('fs.liberar', { caminhos: [caminho] }).catch(() => {});
     await call('fs.rename', { caminho, novoNome: novo });
     ui.toast(t('toast.renomeado', { nome: novo }), 'ok');
     recarregar();
@@ -1288,8 +1294,15 @@ async function excluirSelecionado() {
 
   if (!ok) return;
 
+  const caminhos = selecao.map((i) => i.Caminho ?? i.caminho);
+
   try {
-    await call('fs.delete', { caminhos: selecao.map((i) => i.Caminho ?? i.caminho) });
+    // O player segura o arquivo aberto no ffmpeg: sem soltar, o Windows recusa.
+    preview.liberar(caminhos);
+    await call('fs.liberar', { caminhos }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 150));
+
+    await call('fs.delete', { caminhos });
     ui.toast(t('toast.excluido', { n: selecao.length }), 'ok');
     limparSelecao();
     preview.limpar();
@@ -1303,6 +1316,8 @@ function copiar() {
   const selecao = selecionados();
   if (selecao.length === 0) return;
   state.clip = { caminhos: selecao.map((i) => i.Caminho ?? i.caminho), recortar: false };
+  state.cortados.clear();
+  aplicarSelecao();
   call('fs.clipboardSet', { caminhos: state.clip.caminhos }).catch(() => {});
   ui.toast(t('toast.copiado', { n: selecao.length }), 'ok', 2200);
 }
@@ -1310,8 +1325,11 @@ function copiar() {
 function recortar() {
   const selecao = selecionados();
   if (selecao.length === 0) return;
-  state.clip = { caminhos: selecao.map((i) => i.Caminho ?? i.caminho), recortar: true };
-  call('fs.clipboardSet', { caminhos: state.clip.caminhos }).catch(() => {});
+  const caminhos = selecao.map((i) => i.Caminho ?? i.caminho);
+  state.clip = { caminhos, recortar: true };
+  state.cortados = new Set(caminhos);
+  aplicarSelecao();
+  call('fs.clipboardSet', { caminhos }).catch(() => {});
   ui.toast(t('toast.copiado', { n: selecao.length }), 'ok', 2200);
 }
 
@@ -1390,19 +1408,42 @@ async function colarCaminhos(caminhos, recortarItens) {
     } else if (recortarItens) {
       const card = ui.progresso({ id: opId, titulo: t('progresso.movendo', { n: caminhos.length }) });
       card.aoCancelar = () => call('fs.cancelar', { opId }).catch(() => {});
-      await call('fs.move', { origens: caminhos, destino, opId });
+
+      // Solta o arquivo que a prévia estiver a usar, senão o Windows recusa mover.
+      preview.liberar(caminhos);
+      await call('fs.liberar', { caminhos }).catch(() => {});
+      await new Promise((r) => setTimeout(r, 150));
+
+      const resultado = await call('fs.move', { origens: caminhos, destino, opId });
       card.fechar(0);
+
+      const movidos = resultado?.movidos ?? 0;
+      const erros = resultado?.erros ?? [];
+
+      if (movidos > 0) {
+        ui.toast(t('toast.colado', { n: movidos }), 'ok', 2600);
+      }
+
+      if (erros.length > 0) {
+        ui.toast(t('erro.mover', { n: erros.length, erro: erros[0] }), 'erro', 9000);
+      }
     } else {
       const card = ui.progresso({ id: opId, titulo: t('progresso.copiando', { n: caminhos.length }) });
       card.aoCancelar = () => call('fs.cancelar', { opId }).catch(() => {});
-      await call('fs.copy', { origens: caminhos, destino, opId });
+      const resultado = await call('fs.copy', { origens: caminhos, destino, opId });
       card.fechar(0);
+
+      const erros = resultado?.erros ?? [];
+      if (erros.length > 0) {
+        ui.toast(t('erro.copiar', { n: erros.length, erro: erros[0] }), 'erro', 9000);
+      }
     }
   } catch (erro) {
     ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
   }
 
   state.clip = { caminhos: [], recortar: false };
+  state.cortados.clear();
   recarregar();
 }
 
@@ -1483,6 +1524,11 @@ function alternarVisao() {
 // ---------- teclado ----------
 
 function aoTeclar(evento) {
+  // Diálogo aberto: as teclas são dele (Enter confirma, Escape fecha) — sem abrir arquivos por baixo.
+  if (document.getElementById('modal-raiz')?.firstElementChild) {
+    return;
+  }
+
   const alvo = evento.target;
   const digitando = alvo && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA' || alvo.isContentEditable);
 

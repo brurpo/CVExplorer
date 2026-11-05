@@ -40,6 +40,24 @@ export function estaAberto() {
   return !painel.hidden;
 }
 
+/**
+ * Fecha o player se ele estiver a segurar um dos arquivos (o ffmpeg mantém o
+ * arquivo aberto e o Windows recusa apagar/mover enquanto isso).
+ */
+export function liberar(caminhos) {
+  const lista = (Array.isArray(caminhos) ? caminhos : [caminhos])
+    .filter(Boolean)
+    .map((c) => String(c).toLowerCase());
+
+  if (!jogador || !lista.includes(String(jogador.caminho).toLowerCase())) {
+    return false;
+  }
+
+  fecharJogador();
+  limpar();
+  return true;
+}
+
 /** Estado vazio: nada selecionado (o painel continua visível). */
 export function limpar() {
   fecharJogador();
@@ -164,6 +182,8 @@ async function mostrarVideo(item, caminho, nome) {
     caminho,
     video,
     id: null,
+    midiaId: null,
+    nativo: false,
     inicio: 0,
     duracao: 0,
     tocando: false,
@@ -183,16 +203,33 @@ async function mostrarVideo(item, caminho, nome) {
   video.addEventListener('play', () => atualizarBotao(true));
   video.addEventListener('pause', () => atualizarBotao(false));
   video.addEventListener('timeupdate', () => atualizarTempo());
+  video.addEventListener('durationchange', () => {
+    // No modo direto a duração vem do próprio arquivo.
+    if (jogador?.nativo && Number.isFinite(video.duration)) {
+      jogador.duracao = video.duration;
+    }
+    atualizarTempo();
+  });
   video.addEventListener('error', () => {
     corpoEl.replaceChildren(placeholder(t('preview.previaFalhou', { erro: 'fluxo de vídeo' })));
     corpoEl.appendChild(botaoExterno(caminho));
   });
 
-  // Soltar a barra reinicia o fluxo no ponto pedido (o stream é gerado sob demanda).
+  // Direto no arquivo: seek nativo (instantâneo). Pelo ffmpeg: reabre o fluxo no ponto.
+  // Em nenhum dos casos dá "play" sozinho se estava pausado.
   barra.addEventListener('change', async () => {
-    if (!jogador.duracao) return;
-    const alvo = (Number(barra.value) / 1000) * jogador.duracao;
-    await abrirFluxo(caminho, alvo, true);
+    const total = jogador.duracao || video.duration || 0;
+    if (!total) return;
+
+    const alvo = (Number(barra.value) / 1000) * total;
+
+    if (jogador.nativo) {
+      video.currentTime = alvo;
+      atualizarTempo();
+      return;
+    }
+
+    await abrirFluxo(caminho, alvo, !video.paused);
   });
 
   mostrarCarregando(t('preview.iniciando'));
@@ -210,8 +247,10 @@ function atualizarBotao(tocando) {
 
 function atualizarTempo() {
   if (!jogador?.video) return;
-  const total = jogador.duracao || 0;
-  const atual = Math.min(total, jogador.inicio + (jogador.video.currentTime || 0));
+  const total = jogador.duracao || jogador.video.duration || 0;
+  const atual = jogador.nativo
+    ? (jogador.video.currentTime || 0)
+    : Math.min(total, jogador.inicio + (jogador.video.currentTime || 0));
   jogador.tempo.textContent = `${relogio(atual)} / ${relogio(total)}`;
   if (total > 0) {
     jogador.barra.value = String(Math.round((atual / total) * 1000));
@@ -253,11 +292,16 @@ function restaurarVideo() {
   }
 }
 
-/** Pede ao host um fluxo novo (do zero ou a partir de um ponto) e liga no <video>. */
+/** Pede ao host a mídia (original ou fluxo do ffmpeg) e liga no <video>. */
 async function abrirFluxo(caminho, inicio, tocar) {
   if (jogador?.id) {
     call('media.playFechar', { id: jogador.id }).catch(() => {});
     jogador.id = null;
+  }
+
+  if (jogador?.midiaId) {
+    call('media.playFechar', { midiaId: jogador.midiaId }).catch(() => {});
+    jogador.midiaId = null;
   }
 
   const jaTemPlayer = Boolean(jogador?.video?.isConnected);
@@ -278,8 +322,10 @@ async function abrirFluxo(caminho, inicio, tocar) {
     return;
   }
 
-  jogador.id = resposta.id;
-  jogador.inicio = inicio;
+  jogador.nativo = Boolean(resposta.nativo);
+  jogador.id = resposta.id ?? null;
+  jogador.midiaId = resposta.midiaId ?? null;
+  jogador.inicio = jogador.nativo ? 0 : inicio;
   jogador.duracao = resposta.duracao;
   restaurarVideo();
 
@@ -296,6 +342,10 @@ async function abrirFluxo(caminho, inicio, tocar) {
 function fecharJogador() {
   if (jogador?.id) {
     call('media.playFechar', { id: jogador.id }).catch(() => {});
+  }
+
+  if (jogador?.midiaId) {
+    call('media.playFechar', { midiaId: jogador.midiaId }).catch(() => {});
   }
 
   if (jogador?.video) {

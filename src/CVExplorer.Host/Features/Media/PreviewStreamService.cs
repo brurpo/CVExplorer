@@ -7,6 +7,8 @@ public sealed class PlayerStream
 {
     public string Id { get; init; } = Guid.NewGuid().ToString("N")[..12];
 
+    public string Caminho { get; set; } = string.Empty;
+
     public Process? Processo { get; set; }
 
     public Stream? Saida { get; set; }
@@ -103,6 +105,7 @@ public sealed class PreviewStreamService
 
             var fluxo = new PlayerStream
             {
+                Caminho = info.Caminho,
                 Encoder = encoder,
                 Processo = processo,
                 Saida = processo.StandardOutput.BaseStream,
@@ -152,6 +155,36 @@ public sealed class PreviewStreamService
         Encerrar(fluxo);
     }
 
+    /// <summary>Encerra os fluxos que estão a ler algum destes arquivos e espera o ffmpeg sair.</summary>
+    public void FecharPorCaminho(IEnumerable<string> caminhos)
+    {
+        var alvos = new HashSet<string>(
+            (caminhos ?? Array.Empty<string>()).Where(c => !string.IsNullOrWhiteSpace(c)).Select(Path.GetFullPath),
+            StringComparer.OrdinalIgnoreCase);
+
+        if (alvos.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var fluxo in _ativos.Values.Where(f => alvos.Contains(Seguro(f.Caminho))))
+        {
+            Fechar(fluxo.Id);
+        }
+
+        static string Seguro(string caminho)
+        {
+            try
+            {
+                return Path.GetFullPath(caminho);
+            }
+            catch
+            {
+                return caminho;
+            }
+        }
+    }
+
     public void FecharTodos()
     {
         foreach (var id in _ativos.Keys.ToArray())
@@ -168,6 +201,10 @@ public sealed class PreviewStreamService
             if (fluxo.Processo is { HasExited: false })
             {
                 fluxo.Processo.Kill(entireProcessTree: true);
+
+                // Espera o processo morrer: enquanto ele vive, o arquivo continua travado
+                // e o Windows recusa mover/apagar (era o "aberto em ffmpeg" ao excluir).
+                fluxo.Processo.WaitForExit(2000);
             }
         }
         catch (Exception ex)

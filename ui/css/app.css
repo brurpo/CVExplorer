@@ -470,6 +470,12 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
 
 .tile.selecionado:hover { background: rgba(90, 169, 230, 0.34); }
 
+/* Recortado (Ctrl+X): fica esmaecido até colar ou cancelar, como no Explorer. */
+.tile.cortado .tile-thumb,
+.tile.cortado .tile-nome { opacity: 0.4; }
+
+.tile.cortado { opacity: 0.75; }
+
 .tile-thumb {
   position: relative;
   width: 100%;
@@ -599,6 +605,8 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
 }
 
 .row.selecionado:hover { background: rgba(90, 169, 230, 0.34); }
+
+.row.cortado { opacity: 0.45; }
 
 .row-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-icone { display: grid; place-items: center; color: var(--muted); }

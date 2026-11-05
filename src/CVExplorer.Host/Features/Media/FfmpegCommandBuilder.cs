@@ -143,6 +143,15 @@ public static class FfmpegCommandBuilder
                 args.Add(plan.PixFmt);
                 args.Add("-b:v");
                 args.Add($"{Math.Round(plan.AlvoMbps):0}M");
+
+                // Bitrate fixo (H.264 50 Mbps): minrate/maxrate iguais + bufsize pedem CBR
+                // aos encoders que sabem fazer (x264, nvenc, qsv, amf, MF).
+                if (plan.BitrateFixo)
+                {
+                    var alvo = $"{Math.Round(plan.AlvoMbps):0}M";
+                    args.AddRange(new[] { "-minrate", alvo, "-maxrate", alvo, "-bufsize", $"{Math.Round(plan.AlvoMbps * 2):0}M" });
+                }
+
                 break;
         }
 

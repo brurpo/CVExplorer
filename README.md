@@ -239,10 +239,15 @@ estão em codec de edição (ProRes, DNxHR, CineForm…) não geram pergunta: s�
 
 ### Player embutido (prévia de vídeo)
 
-O `<video>` do WebView2 é Chromium: não abre MXF, ProRes, DNxHR, R3D nem a maioria dos formatos de
-câmera. E o player do Windows também não — é justamente o motivo de a prévia falhar. Então o vídeo
-é **tocado pelo ffmpeg** e entregue ao `<video>` como fluxo H.264 fragmentado, por HTTP em
-`127.0.0.1` (loopback, com token aleatório na URL):
+**Primeiro caminho: tocar o original.** Quando o Chromium do WebView2 decodifica o codec — H.264
+(8 bits), AV1, VP8/VP9 em `.mp4`, `.m4v`, `.mov` ou `.webm`, com áudio AAC/MP3/Opus/Vorbis/FLAC —
+o `<video>` recebe o **arquivo original** por HTTP em `127.0.0.1`, com suporte a `Range`. Quem
+decodifica é o próprio navegador: **nenhum processo de ffmpeg** é aberto, o arquivo começa na hora e
+o seek é **instantâneo**, inclusive com o vídeo pausado (a barra pula e continua pausado).
+
+**Segundo caminho: ffmpeg em fluxo.** MXF, ProRes, DNxHR, DXV, R3D e afins não existem no Chromium,
+então o ffmpeg decodifica e entrega um fluxo H.264 fragmentado pelo mesmo servidor loopback (com
+token aleatório na URL):
 
 - **Nada é gravado em disco** e nada é esperado: o ffmpeg começa a decodificar e o player toca em
   ~1 segundo, mesmo em arquivo de 300 MB.
@@ -250,9 +255,14 @@ câmera. E o player do Windows também não — é justamente o motivo de a pré
   novo entra no mesmo `<video>` (≈2 s). A barra de tempo usa a duração real do `ffprobe`.
 - Controles próprios (play/pause, linha do tempo, tempo, abrir no player externo) porque um fluxo
   contínuo não tem duração de arquivo.
-- O processo do ffmpeg morre ao trocar de arquivo, ao fechar a prévia e ao fechar a janela.
+- O processo do ffmpeg morre ao trocar de arquivo, ao fechar a prévia e ao fechar a janela — e o
+  app **espera** o processo sair antes de seguir, para o arquivo não ficar travado.
 
-Encoder: o primeiro H.264 disponível no ffmpeg do usuário (`libx264` → `h264_nvenc` → `h264_qsv` →
+O servidor de mídia abre o arquivo com `FileShare.ReadWrite | Delete`: mover ou apagar um vídeo que
+está na prévia funciona (o app também encerra a prévia e as miniaturas em geração antes de mexer no
+arquivo).
+
+Encoder do fluxo: o primeiro H.264 disponível (`libx264` → `h264_nvenc` → `h264_qsv` →
 `h264_amf` → `h264_mf` → `libopenh264`), cada um com o **seu** preset — passar `-preset speed` para
 NVENC, por exemplo, faz o encoder recusar abrir o fluxo, e aí o app tenta o próximo.
 
@@ -308,7 +318,11 @@ define codec, container e áudio:
 | MOV | HAP Alpha | `hap -format hap_alpha` | `.mov` | PCM 16 bits |
 | MXF | DNxHR SQ / HQ | `dnxhd` | `.mxf` (OP1a) | PCM 24 bits |
 | MXF | XDCAM HD422 50 Mbps | `mpeg2video` CBR 50 Mbps, 4:2:2 | `.mxf` (OP1a) | PCM 24 bits |
-| MP4 | H.264 | encoder H.264 disponível, ~20 Mbps | `.mp4` | AAC 320 kbps |
+| MP4 | H.264 — automático | encoder H.264 disponível, bitrate acompanha a origem | `.mp4` | AAC 320 kbps |
+| MP4 | H.264 — 50 Mbps | mesmo encoder, **CBR 50 Mbps** (`-minrate/-maxrate/-bufsize`) | `.mp4` | AAC 320 kbps |
+
+Com **vários vídeos selecionados** o mesmo preset vale para todos: o menu mostra *Converter N
+arquivos…* e a conversão roda em sequência com um card só (o original de cada um é preservado).
 
 Detalhes que valem registro: `.mxf` recebe `-f mxf` e **não** recebe `-movflags`; XDCAM usa
 `-b:v/-minrate/-maxrate 50M` com `-bufsize 17825792 -g 12 -bf 2` (é o que emissora espera, e o

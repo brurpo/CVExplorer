@@ -516,16 +516,32 @@ public sealed class FfmpegCommandTests
     public void MenuDePresetsCobreTodosOsFormatos()
     {
         var presets = VideoPlanBuilder.Presets();
-        Assert.Equal(11, presets.Count);
+        Assert.Equal(12, presets.Count);
 
         foreach (var esperado in new[]
                  {
                      "prores422_mov", "prores4444_mov", "dnxhr_sq_mov", "dnxhr_hq_mov",
-                     "dnxhr_sq_mxf", "dnxhr_hq_mxf", "xdcam", "dxv3", "dxv3_alpha", "hap_alpha", "h264",
+                     "dnxhr_sq_mxf", "dnxhr_hq_mxf", "xdcam", "dxv3", "dxv3_alpha", "hap_alpha", "h264", "h264_50",
                  })
         {
             Assert.Contains(presets, p => p.Chave == esperado);
         }
+    }
+
+    [Fact]
+    public void H264TemDuasOpcoesAutoE50Mbps()
+    {
+        var info = new MediaInfo { Caminho = @"C:\a.mov", Largura = 1920, Altura = 1080, Fps = 30, PixFmt = "yuv422p" };
+        info.BitrateVideoMbps = 20;
+
+        var automatico = VideoPlanBuilder.Choose(info, "h264", espacoLivre: 0);
+        var fixo = VideoPlanBuilder.Choose(info, "h264_50", espacoLivre: 0);
+
+        Assert.Equal("h264", automatico.Perfil);
+        Assert.True(automatico.AlvoMbps < 30, $"automatico deveria seguir a origem, veio {automatico.AlvoMbps}");
+        Assert.Equal("h264_50", fixo.Perfil);
+        Assert.Equal(50, fixo.AlvoMbps);
+        Assert.Equal(".mp4", fixo.Container);
     }
 
     [Fact]
@@ -813,5 +829,47 @@ public sealed class BlendPreviewTests
 
         memoria.Position = 0;
         Assert.Null(BlendPreviewReader.Read(memoria));
+    }
+}
+
+public sealed class ReproducaoDiretaTests
+{
+    private static MediaInfo Video(string caminho, string codec, string pixFmt = "yuv420p", string? audio = null) =>
+        new()
+        {
+            Caminho = caminho,
+            Codec = codec,
+            PixFmt = pixFmt,
+            Formato = "mov,mp4,m4a,3gp,3g2,mj2",
+            TemAudio = audio is not null,
+            AudioCodec = audio ?? string.Empty,
+        };
+
+    [Theory]
+    [InlineData("a.mp4", "h264", "yuv420p", "aac")]
+    [InlineData("a.mov", "h264", "yuv420p", null)]
+    [InlineData("a.MP4", "av1", "yuv420p10le", "opus")]
+    [InlineData("a.webm", "vp9", "yuv420p", "vorbis")]
+    public void TocaDiretoOQueOChromiumDecodifica(string nome, string codec, string pixFmt, string? audio)
+    {
+        Assert.True(ReproducaoDireta.Suportado(Video(nome, codec, pixFmt, audio)));
+    }
+
+    [Theory]
+    [InlineData("a.mov", "prores", "yuv422p10le", "pcm_s16le")]   // codec de edicao
+    [InlineData("a.mov", "dnxhd", "yuv422p", null)]
+    [InlineData("a.mp4", "h264", "yuv420p10le", "aac")]          // h264 de 10 bits
+    [InlineData("a.mp4", "h264", "yuv420p", "pcm_s16le")]        // audio que o Chromium nao abre
+    [InlineData("a.mxf", "h264", "yuv420p", null)]               // container
+    [InlineData("a.avi", "h264", "yuv420p", null)]
+    public void MantemNoFluxoDoFfmpegOQueEleNaoDecodifica(string nome, string codec, string pixFmt, string? audio)
+    {
+        var info = Video(nome, codec, pixFmt, audio);
+        if (nome.EndsWith(".mxf", StringComparison.OrdinalIgnoreCase))
+        {
+            info.Formato = "mxf";
+        }
+
+        Assert.False(ReproducaoDireta.Suportado(info));
     }
 }

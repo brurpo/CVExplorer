@@ -85,7 +85,8 @@ export function modal({ titulo, descricao, corpo, botoes = [], largo = false, ao
       e.preventDefault();
       fechar();
     } else if (e.key === 'Enter' && !e.shiftKey && document.activeElement?.tagName !== 'TEXTAREA') {
-      const primario = rodape.querySelector('.btn.primario');
+      // "perigo" tambem conta: confirmar exclusão com Enter é o esperado.
+      const primario = rodape.querySelector('.btn.primario, .btn.perigo');
       if (primario && !primario.disabled) {
         e.stopPropagation();
         e.preventDefault();

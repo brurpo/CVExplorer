@@ -296,6 +296,17 @@ public static class Commands
             return Task.FromResult<object?>(new { ok = true, excluidos = caminhos.Count });
         });
 
+        // Solta tudo o que estiver a ler estes arquivos: prévia (ffmpeg), miniaturas e
+        // mídias registradas no servidor do player. Sem isso o Windows recusa mover/apagar.
+        Add("fs.liberar", (args, _) =>
+        {
+            var caminhos = StrArray(args, "caminhos");
+            host.Previa.FecharPorCaminho(caminhos);
+            host.Thumbs.Liberar(caminhos);
+            host.Player.LiberarPorCaminho(caminhos);
+            return Task.FromResult<object?>(new { ok = true });
+        });
+
         Add("fs.conflict", (args, _) =>
         {
             var id = Str(args, "id");
@@ -649,8 +660,9 @@ public static class Commands
             };
         }, operacao: true);
 
-        // Player embutido: o ffmpeg decodifica e entrega o fluxo H.264 direto no <video>.
-        // Nada e gravado: abrir e instantaneo, e o scrub reabre o fluxo no segundo pedido.
+        // Player embutido: toca o arquivo original quando o WebView2 decodifica o codec
+        // (seek instantâneo, sem processo nenhum); nos codecs de edição o ffmpeg entrega
+        // o fluxo H.264 sob demanda.
         Add("media.play", async (args, ct) =>
         {
             var caminho = Str(args, "caminho");
@@ -667,6 +679,21 @@ public static class Commands
                 return new { ok = false, erro = "Nao foi possivel ler o video (ffmpeg ausente?)." };
             }
 
+            if (ReproducaoDireta.Suportado(info))
+            {
+                var urlMidia = host.Player.RegistrarMidia(caminho, out var midiaId);
+                return new
+                {
+                    ok = true,
+                    nativo = true,
+                    midiaId,
+                    url = urlMidia,
+                    inicio = 0,
+                    duracao = info.DuracaoSegundos,
+                    encoder = (string?)null,
+                };
+            }
+
             var fluxo = host.Previa.Abrir(info, inicio);
             if (fluxo.Erro is not null || fluxo.Saida is null)
             {
@@ -681,6 +708,8 @@ public static class Commands
             return new
             {
                 ok = true,
+                nativo = false,
+                midiaId = (string?)null,
                 id = fluxo.Id,
                 url = host.Player.UrlDoFluxo(fluxo.Id),
                 inicio,
@@ -692,6 +721,7 @@ public static class Commands
         Add("media.playFechar", (args, _) =>
         {
             host.Previa.Fechar(Str(args, "id"));
+            host.Player.Liberar(Str(args, "midiaId"));
             return Task.FromResult<object?>(new { ok = true });
         });
 

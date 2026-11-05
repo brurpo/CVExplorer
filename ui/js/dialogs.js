@@ -35,7 +35,10 @@ export const PRESETS_CONVERSAO = [
   },
   {
     grupo: 'MP4',
-    itens: [{ chave: 'h264', rotulo: 'H.264' }],
+    itens: [
+      { chave: 'h264', rotulo: 'H.264 — automático' },
+      { chave: 'h264_50', rotulo: 'H.264 — 50 Mbps' },
+    ],
   },
 ];
 
@@ -683,8 +686,17 @@ export async function confirmarConversao(videos, totalItens = videos.length, con
   });
 }
 
-export async function converterVideo(item, config, perfilInicial = null) {
-  const caminho = item.Caminho ?? item.caminho;
+export async function converterVideo(itemOuItens, config, perfilInicial = null) {
+  // Vários arquivos selecionados: o diálogo mostra o primeiro e aplica a todos.
+  const itens = (Array.isArray(itemOuItens) ? itemOuItens : [itemOuItens])
+    .filter((i) => i && !(i.Pasta ?? i.pasta) && fmt.ehVideo(i.Nome ?? i.nome));
+
+  if (itens.length === 0) {
+    return;
+  }
+
+  const primeiro = itens[0];
+  const caminho = primeiro.Caminho ?? primeiro.caminho;
   let info;
 
   try {
@@ -700,7 +712,7 @@ export async function converterVideo(item, config, perfilInicial = null) {
   }
 
   const corpo = document.createElement('div');
-  const tamanhoOriginal = item.Tamanho ?? item.tamanho ?? 0;
+  const tamanhoOriginal = primeiro.Tamanho ?? primeiro.tamanho ?? 0;
 
   const detalhes = document.createElement('div');
   detalhes.style.display = 'grid';
@@ -753,12 +765,17 @@ export async function converterVideo(item, config, perfilInicial = null) {
     ui.campo(t('video.perfil'), perfil),
     ui.campo(t('video.estimativa'), estimativa),
     ui.campo(t('video.avisos'), avisos),
-    ui.caixaAviso(t('video.descricao'), 'info'),
   );
+
+  if (itens.length > 1) {
+    corpo.append(ui.caixaAviso(t('video.varios', { n: itens.length }), 'info'));
+  }
+
+  corpo.append(ui.caixaAviso(t('video.descricao'), 'info'));
 
   ui.modal({
     titulo: t('video.titulo'),
-    descricao: fmt.nomearArquivo(caminho),
+    descricao: itens.length > 1 ? t('video.variosTitulo', { n: itens.length }) : fmt.nomearArquivo(caminho),
     corpo,
     botoes: [
       { texto: t('dialogo.cancelar') },
@@ -767,31 +784,65 @@ export async function converterVideo(item, config, perfilInicial = null) {
         tipo: 'primario',
         acao: async (fechar) => {
           fechar();
-          await executarConversao(caminho, perfil.value);
+          await executarConversao(itens, perfil.value);
         },
       },
     ],
   });
 }
 
-async function executarConversao(caminho, perfil) {
+async function executarConversao(itens, perfil) {
   const opId = `conv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  const destino = fmt.pastaDe(caminho);
-  const card = ui.progresso({ id: opId, titulo: t('progresso.convertendo'), subtitulo: fmt.nomearArquivo(caminho) });
+  const primeiro = itens[0].Caminho ?? itens[0].caminho;
+  const varios = itens.length > 1;
+
+  const card = ui.progresso({
+    id: opId,
+    titulo: varios ? t('progresso.convertendoVarios', { n: itens.length }) : t('progresso.convertendo'),
+    subtitulo: fmt.nomearArquivo(primeiro),
+  });
   card.aoCancelar = () => call('media.cancel', { opId }).catch(() => {});
 
+  const erros = [];
+  const saidas = [];
+  let convertidos = 0;
+
   try {
-    const resultado = await call('media.convert', { caminho, perfil, destino, opId });
+    for (const [indice, item] of itens.entries()) {
+      const caminho = item.Caminho ?? item.caminho;
+      const destino = fmt.pastaDe(caminho);
+
+      if (varios) {
+        card.definirTitulo(t('progresso.convertendoVarios', { n: `${indice + 1}/${itens.length}` }));
+      }
+
+      try {
+        const resultado = await call('media.convert', { caminho, perfil, destino, opId });
+        if (resultado?.ok) {
+          convertidos++;
+          if (resultado.saida) saidas.push(resultado.saida);
+        } else {
+          erros.push(`${fmt.nomearArquivo(caminho)}: ${resultado?.erro ?? '—'}`);
+        }
+      } catch (erro) {
+        erros.push(`${fmt.nomearArquivo(caminho)}: ${erro.message}`);
+      }
+    }
+
     card.fechar(400);
 
-    if (resultado?.ok) {
-      ui.toast(t('video.concluido', {
-        arquivo: fmt.nomearArquivo(resultado.saida),
-        perfil: resultado.perfil ?? perfil,
-      }), 'ok', 6000);
+    if (convertidos > 0) {
+      ui.toast(varios
+        ? t('video.concluidoVarios', { n: convertidos, perfil })
+        : t('video.concluido', { arquivo: fmt.nomearArquivo(saidas[0] ?? primeiro), perfil }), 'ok', 6000);
+    }
+
+    if (erros.length > 0) {
+      ui.toast(varios ? t('video.errosVarios', { n: erros.length, erro: erros[0] }) : t('video.erro', { arquivo: fmt.nomearArquivo(primeiro), erro: erros[0] }), 'erro', 9000);
+    }
+
+    if (convertidos > 0) {
       document.dispatchEvent(new CustomEvent('recarregar'));
-    } else {
-      ui.toast(t('video.erro', { arquivo: fmt.nomearArquivo(caminho), erro: resultado?.erro ?? '—' }), 'erro', 8000);
     }
   } catch (erro) {
     card.fechar(400);

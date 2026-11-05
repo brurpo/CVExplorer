@@ -178,11 +178,11 @@ public sealed class FileOperations
 
                     if (Directory.Exists(source))
                     {
-                        Directory.Move(source, target);
+                        FileOperations.ExecutarComRepeticao(() => Directory.Move(source, target));
                     }
                     else
                     {
-                        File.Move(source, target, overwrite: true);
+                        FileOperations.ExecutarComRepeticao(() => File.Move(source, target, overwrite: true));
                     }
                 }
                 else if (!sameName)
@@ -267,15 +267,41 @@ public sealed class FileOperations
     {
         foreach (var path in paths)
         {
-            if (Directory.Exists(path))
+            // O arquivo pode estar aberto por um instante (ffmpeg da miniatura/previa):
+            // no Windows isso vira "em uso"; algumas tentativas resolvem.
+            ExecutarComRepeticao(() =>
             {
-                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(
-                    path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+                if (Directory.Exists(path))
+                {
+                    Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(
+                        path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+                }
+                else if (File.Exists(path))
+                {
+                    Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
+                        path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+                }
+            });
+        }
+    }
+
+    /// <summary>Tenta de novo por alguns instantes quando o arquivo esta momentaneamente em uso.</summary>
+    internal static void ExecutarComRepeticao(Action acao, int tentativas = 12, int esperaMs = 200)
+    {
+        for (var tentativa = 1; ; tentativa++)
+        {
+            try
+            {
+                acao();
+                return;
             }
-            else if (File.Exists(path))
+            catch (IOException) when (tentativa < tentativas)
             {
-                Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
-                    path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+                Thread.Sleep(esperaMs);
+            }
+            catch (UnauthorizedAccessException) when (tentativa < tentativas)
+            {
+                Thread.Sleep(esperaMs);
             }
         }
     }
