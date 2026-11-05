@@ -354,11 +354,14 @@ diálogo avisa qual foi a origem e a cadeia de filtros vai junto com o resto (`-
 com o ajuste de dimensão ímpar).
 
 O filtro é escolhido por capacidade, em ordem de qualidade: `nnedi` → `bwdif` → `yadif`
-(`bwdif=mode=send_frame:parity=auto:deint=interlaced` mantém o fps, então 25i vira 25p). Sobre o
-NNEDI especificamente: o filtro do FFmpeg exige o arquivo de pesos `nnedi3_weights.bin`, que é GPL e
-não acompanha nenhum build oficial — nenhum ffmpeg comum tem `nnedi` disponível, então na prática
-o app usa **bwdif**, que é o melhor desentrelaçador nativo (motion-adaptive). Se o seu ffmpeg tiver
-`nnedi` compilado com pesos, ele é preferido automaticamente, sem mudar nada.
+(`deint=interlaced` só age em quadro marcado; `mode=send_frame` mantém o fps, então 25i vira 25p).
+
+Sobre o **NNEDI**: o filtro do FFmpeg é **GPL** (`nnedi_filter_deps="gpl"`) e exige o arquivo
+`nnedi3_weights.bin` (~13 MB, licença GPL). Por isso ele não existe em build LGPL nenhum — e é
+justamente o build de `scripts\build-ffmpeg-dxv.ps1` que resolve: ele configura `--enable-gpl`,
+baixa os pesos para `nnedi3_weights.bin` **ao lado do ffmpeg.exe** e o host roda o ffmpeg com o
+diretório de trabalho nessa pasta, então o nome padrão do arquivo resolve sem escapar caminho em
+`-vf`. Com um ffmpeg sem nnedi, o app cai para **bwdif** (motion-adaptive), que é o melhor nativo.
 
 > Para economizar mais que o próprio MXF mantendo intra-frame, use **DNxHR LB** no diálogo
 > (ficou em 292 MB, abaixo dos 323 MB do MXF). É 8 bits, então não adicione headroom de cor.
@@ -433,6 +436,10 @@ roda como processo separado — seu binário não é incorporado ao app.
 implementa DXT1). Para isso existe `scripts\build-ffmpeg-dxv.ps1`, que compila um ffmpeg com o
 patch de [`vendor/ffmpeg`](./vendor/ffmpeg) — ver [Alpha em codec de playback](#alpha-em-codec-de-playback-dxv3-e-hap).
 Sem ele o app continua funcionando e o preset apenas fica indisponível.
+
+Esse build é **GPL v2+** (o filtro `nnedi` de desentrelaçamento é GPL e entra junto), e é por isso que
+ele fica em `.tools\ffmpeg-dxv\` e não dentro do app: o ffmpeg continua sendo um processo separado,
+que o CV Explorer apenas executa. Se você só quer desentrelaçar, qualquer ffmpeg com `bwdif` serve.
 
 ---
 

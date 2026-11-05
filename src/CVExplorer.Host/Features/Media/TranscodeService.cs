@@ -163,6 +163,9 @@ public sealed class TranscodeService
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
+            // O filtro nnedi procura "nnedi3_weights.bin" no diretório de trabalho:
+            // com o cwd na pasta do ffmpeg, o arquivo ao lado do executável é achado.
+            WorkingDirectory = Path.GetDirectoryName(ffmpeg) ?? AppPaths.Root,
         };
 
         foreach (var arg in FfmpegCommandBuilder.Build(info, plan, entrada, parcial, sequencia))

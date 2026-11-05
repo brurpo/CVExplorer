@@ -80,22 +80,33 @@ if ($Forcar -or -not (Test-Path $origem)) {
 $fontes = Get-ChildItem $origem -Directory | Select-Object -First 1
 $msysFontes = CaminhoMsys $fontes.FullName
 
-Write-Host "Configurando (LGPL, sem dependencias externas alem do snappy)..." -ForegroundColor Cyan
+Write-Host "Configurando (GPL por causa do filtro nnedi)..." -ForegroundColor Cyan
 ExecutarBash @"
 export PATH=/mingw64/bin:`$PATH
 cd '$msysFontes' && ./configure \
   --arch=x86_64 --target-os=mingw32 \
   --disable-doc --disable-debug --disable-autodetect --disable-ffplay --disable-network \
   --enable-ffmpeg --enable-ffprobe --enable-zlib --enable-mediafoundation --enable-libsnappy \
+  --enable-gpl \
   --extra-ldflags=-static --extra-cflags=-O2
 "@
 
-Write-Host "Compilando (isso leva alguns minutos)..." -ForegroundColor Cyan
+Write-Host "Compilando (isso leva vários minutos)..." -ForegroundColor Cyan
 ExecutarBash "export PATH=/mingw64/bin:`$PATH; cd '$msysFontes' && make -j$([Environment]::ProcessorCount)"
 
 New-Item -ItemType Directory -Path $destino -Force | Out-Null
 Copy-Item (Join-Path $fontes.FullName "ffmpeg.exe") $destino -Force
 Copy-Item (Join-Path $fontes.FullName "ffprobe.exe") $destino -Force
+
+# O filtro nnedi só funciona com os pesos ao lado: o host roda o ffmpeg com o cwd
+# nesta pasta, então o nome padrão "nnedi3_weights.bin" resolve sozinho.
+$pesos = Join-Path $destino "nnedi3_weights.bin"
+if ($Forcar -or -not (Test-Path $pesos)) {
+    Write-Host "Baixando nnedi3_weights.bin (~13 MB)..." -ForegroundColor Cyan
+    $ProgressPreference = "SilentlyContinue"
+    Invoke-WebRequest "https://raw.githubusercontent.com/dubhater/vapoursynth-nnedi3/master/src/nnedi3_weights.bin" `
+        -OutFile $pesos -UseBasicParsing -TimeoutSec 900
+}
 
 Write-Host ""
 Write-Host "Pronto: $destino" -ForegroundColor Green

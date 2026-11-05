@@ -41,8 +41,73 @@
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "Cascadia Mono", "Consolas", monospace;
 
+  /* barras e xadrez da prévia (mudam no tema claro) */
+  --barra: #101113;
+  --barra-2: #131417;
+  --xadrez: #141518;
+  --xadrez-2: #101113;
+
   color-scheme: dark;
 }
+
+/*
+ * Tema claro. Só redefine as variáveis equivalentes e os poucos lugares que usam
+ * cor fixa (barras, xadrez do preview, tooltip de digitação): o resto já é var().
+ */
+html[data-tema="claro"] {
+  --bg: #f4f5f7;
+  --bg-elev: #eceef1;
+  --surface: #e6e9ee;
+  --surface-2: #dfe3e9;
+  --surface-3: #d4d9e1;
+  --border: #d3d8e0;
+  --border-strong: #bfc6d1;
+
+  --text: #161a20;
+  --text-2: #3c4450;
+  --muted: #5f6773;
+  --muted-2: #7a828e;
+
+  --accent: #2b7cc0;
+  --accent-strong: #1f6aab;
+  --accent-dim: rgba(43, 124, 192, 0.14);
+  --accent-dim-2: rgba(43, 124, 192, 0.24);
+
+  --pasta: #dda92a;
+
+  --danger: #c0393d;
+  --danger-dim: rgba(192, 57, 61, 0.12);
+  --warning: #b47908;
+  --warning-dim: rgba(180, 121, 8, 0.14);
+  --ok: #2e8f63;
+
+  --shadow: 0 12px 32px rgba(20, 26, 34, 0.18);
+
+  --barra: #e9ebef;
+  --barra-2: #f0f2f5;
+  --xadrez: #e2e5ea;
+  --xadrez-2: #eef0f3;
+
+  color-scheme: light;
+}
+
+html[data-tema="claro"] .titlebar { background: var(--barra); }
+html[data-tema="claro"] .topbar { background: linear-gradient(180deg, var(--barra-2), var(--barra)); }
+html[data-tema="claro"] .janela-btn.fechar:hover { background: #d64545; color: #fff; }
+html[data-tema="claro"] .preview-corpo {
+  background:
+    linear-gradient(45deg, var(--xadrez) 25%, transparent 25%, transparent 75%, var(--xadrez) 75%) 0 0/16px 16px,
+    linear-gradient(45deg, var(--xadrez) 25%, var(--xadrez-2) 25%, var(--xadrez-2) 75%, var(--xadrez) 75%) 8px 8px/16px 16px;
+}
+html[data-tema="claro"] .digitacao { background: rgba(255, 255, 255, 0.96); }
+html[data-tema="claro"] .menu-item.perigo { color: #b23135; }
+html[data-tema="claro"] .progresso-cancelar:hover { color: #b23135; }
+html[data-tema="claro"] .arraste-caixa { background: rgba(244, 245, 247, 0.97); }
+
+/* Botão de tema na barra de título */
+.tema-btn svg { width: 13px; height: 13px; }
+html[data-tema="escuro"] .tema-btn .icone-sol { display: none; }
+html[data-tema="claro"] .tema-btn .icone-lua { display: none; }
 
 * { box-sizing: border-box; }
 

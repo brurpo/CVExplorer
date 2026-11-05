@@ -44,9 +44,9 @@ public static class CodecCapabilities
     });
 
     /// <summary>
-    /// Melhor desentrelaçador que este ffmpeg oferece. O NNEDI3 seria o ideal (borda por
-    /// rede neural), mas o filtro do FFmpeg exige o arquivo de pesos (licença GPL, ~1,6 MB)
-    /// e nenhum build oficial traz isso; então o padrão é bwdif, que é o melhor nativo.
+    /// Melhor desentrelaçador que este ffmpeg oferece. O NNEDI3 é o preferido (borda por
+    /// rede neural) e vem no build de scripts\build-ffmpeg-dxv.ps1 (que liga --enable-gpl
+    /// e deixa o nnedi3_weights.bin ao lado do executável). Sem ele, bwdif; e yadif por último.
     /// </summary>
     public static string Desentrelacador(string ffmpeg) => CacheDesentrelacador.GetOrAdd(ffmpeg, ffmpegCaminho =>
     {

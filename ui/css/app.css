@@ -5,7 +5,7 @@
   gap: 8px;
   height: 30px;
   padding-left: 10px;
-  background: #101113;
+  background: var(--barra);
   border-bottom: 1px solid var(--border);
   user-select: none;
 }
@@ -65,7 +65,7 @@
   gap: 10px;
   padding: 0 12px;
   min-width: 0;
-  background: linear-gradient(180deg, #131417, #101113);
+  background: linear-gradient(180deg, var(--barra-2), var(--barra));
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
 }
@@ -813,8 +813,8 @@ body.arrastando .row, body.arrastando .telha { cursor: grabbing; }
   padding: 12px;
   overflow: hidden;
   background:
-    linear-gradient(45deg, #141518 25%, transparent 25%, transparent 75%, #141518 75%) 0 0/16px 16px,
-    linear-gradient(45deg, #141518 25%, #101113 25%, #101113 75%, #141518 75%) 8px 8px/16px 16px;
+    linear-gradient(45deg, var(--xadrez) 25%, transparent 25%, transparent 75%, var(--xadrez) 75%) 0 0/16px 16px,
+    linear-gradient(45deg, var(--xadrez) 25%, var(--barra) 25%, var(--barra) 75%, var(--xadrez) 75%) 8px 8px/16px 16px;
 }
 
 .preview-corpo img,

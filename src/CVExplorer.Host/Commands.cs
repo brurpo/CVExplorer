@@ -44,6 +44,10 @@ public static class Commands
                 ffprobe = host.Ffmpeg.Ffprobe,
                 // O menu só oferece DXV com alpha quando o encoder suporta DXT5.
                 dxvAlpha = host.Ffmpeg.Ffmpeg is not null && CodecCapabilities.DxvAlpha(host.Ffmpeg.Ffmpeg),
+                // Qual desentrelaçador a conversão vai usar (nnedi > bwdif > yadif).
+                desentrelacador = host.Ffmpeg.Ffmpeg is null
+                    ? null
+                    : CodecCapabilities.Desentrelacador(host.Ffmpeg.Ffmpeg),
             },
             repositorioConfigurado = AppInfo.RepositorioConfigurado,
             raizes = host.Settings.Raizes,

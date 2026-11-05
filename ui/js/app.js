@@ -48,6 +48,30 @@ async function iniciar() {
     });
   });
 
+  // ---- tema claro/escuro ----
+  function aplicarTema(tema, salvar) {
+    const claro = tema === 'claro';
+    document.documentElement.dataset.tema = claro ? 'claro' : 'escuro';
+
+    try {
+      localStorage.setItem('cvexplorer:tema', claro ? 'claro' : 'escuro');
+    } catch {
+      // sem localStorage: só não persiste
+    }
+
+    if (salvar) {
+      state.config.Tema = claro ? 'claro' : 'escuro';
+      call('settings.save', state.config).catch(() => {});
+    }
+  }
+
+  aplicarTema(config.Tema ?? 'escuro', false);
+
+  document.getElementById('btn-tema').addEventListener('click', () => {
+    const atual = document.documentElement.dataset.tema;
+    aplicarTema(atual === 'claro' ? 'escuro' : 'claro', true);
+  });
+
   // ---- barra de título própria ----
   const idJanela = info?.janela ?? null;
 

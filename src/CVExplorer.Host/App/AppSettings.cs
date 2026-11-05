@@ -17,6 +17,9 @@ public sealed class AppSettings
 {
     public string Idioma { get; set; } = "pt-BR";
 
+    /// <summary>escuro | claro</summary>
+    public string Tema { get; set; } = "escuro";
+
     /// <summary>Raizes varridas na auto-deteccao de projetos.</summary>
     public List<string> Raizes { get; set; } = new();
 

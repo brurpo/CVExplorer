@@ -153,6 +153,7 @@ export function menuContexto(x, y, itens) {
   el.replaceChildren();
 
   let submenu = null;
+  let botaoDono = null;
   let fecharSubmenuAgendado = null;
 
   function limparAgendamento() {
@@ -164,16 +165,63 @@ export function menuContexto(x, y, itens) {
 
   function fecharSubmenu() {
     limparAgendamento();
+    document.removeEventListener('mousemove', aoMoverPonteiro, true);
+    botaoDono = null;
+
     if (submenu) {
       submenu.remove();
       submenu = null;
     }
   }
 
-  /** Fechar com atraso: dá tempo de atravessar o vão entre o item e o submenu. */
-  function agendarFecharSubmenu() {
-    limparAgendamento();
-    fecharSubmenuAgendado = setTimeout(fecharSubmenu, 260);
+  /**
+   * Fechar só quando o ponteiro realmente saiu: a área segura é o menu + o submenu +
+   * o corredor entre eles. Sair da linha do item e atravessar o vão não conta como sair
+   * (era o que fechava o submenu mesmo com atraso, no meio do caminho).
+   */
+  function dentroDaAreaSegura(x, y) {
+    const menus = [el, submenu].filter(Boolean);
+
+    for (const menu of menus) {
+      const r = menu.getBoundingClientRect();
+      if (x >= r.left - 2 && x <= r.right + 2 && y >= r.top - 2 && y <= r.bottom + 2) {
+        return true;
+      }
+    }
+
+    if (botaoDono && submenu) {
+      const a = botaoDono.getBoundingClientRect();
+      const b = submenu.getBoundingClientRect();
+      const x1 = Math.min(a.right, b.left);
+      const x2 = Math.max(a.right, b.left);
+      const paraDireita = b.left >= a.right;
+
+      if (x >= (paraDireita ? x1 : b.right) && x <= (paraDireita ? x2 : x1)) {
+        const p = (x - x1) / Math.max(1, x2 - x1);
+        const topo = paraDireita
+          ? a.top + (b.top - a.top) * p
+          : b.top + (a.top - b.top) * p;
+        const fundo = paraDireita
+          ? a.bottom + (b.bottom - a.bottom) * p
+          : b.bottom + (a.bottom - b.bottom) * p;
+        return y >= topo - 8 && y <= fundo + 8;
+      }
+    }
+
+    return false;
+  }
+
+  function aoMoverPonteiro(evento) {
+    if (!submenu) return;
+
+    if (dentroDaAreaSegura(evento.clientX, evento.clientY)) {
+      limparAgendamento();
+      return;
+    }
+
+    if (!fecharSubmenuAgendado) {
+      fecharSubmenuAgendado = setTimeout(fecharSubmenu, 220);
+    }
   }
 
   function abrirSubmenu(botao, lista) {
@@ -182,11 +230,6 @@ export function menuContexto(x, y, itens) {
     const sub = document.createElement('div');
     sub.className = 'menu-contexto';
     sub.dataset.submenu = '1';
-    // O ponteiro pode passar pelo vão entre o menu e o submenu sem fechá-lo.
-    sub.addEventListener('mouseenter', limparAgendamento);
-    sub.addEventListener('mouseleave', (e) => {
-      if (!sub.contains(e.relatedTarget)) agendarFecharSubmenu();
-    });
     preencher(sub, lista);
     document.body.appendChild(sub);
 
@@ -199,7 +242,10 @@ export function menuContexto(x, y, itens) {
 
     sub.style.left = `${Math.max(6, esquerda)}px`;
     sub.style.top = `${Math.max(6, topo)}px`;
+
     submenu = sub;
+    botaoDono = botao;
+    document.addEventListener('mousemove', aoMoverPonteiro, true);
   }
 
   function preencher(container, lista) {
@@ -239,17 +285,10 @@ export function menuContexto(x, y, itens) {
       if (item.submenu) {
         botao.addEventListener('mouseenter', () => {
           limparAgendamento();
-          abrirSubmenu(botao, item.submenu);
-        });
-        botao.addEventListener('mouseleave', (e) => {
-          // Saindo para fora do menu inteiro (e não para o submenu): fecha depois.
-          if (!container.contains(e.relatedTarget) && !submenu?.contains(e.relatedTarget)) {
-            agendarFecharSubmenu();
-          }
+          if (botaoDono !== botao) abrirSubmenu(botao, item.submenu);
         });
         botao.addEventListener('click', () => abrirSubmenu(botao, item.submenu));
       } else {
-        botao.addEventListener('mouseenter', agendarFecharSubmenu);
         botao.addEventListener('click', () => {
           fechar();
           item.acao?.();
