@@ -102,11 +102,23 @@ public sealed class ThumbnailService
     /// Muda quando o pipeline de miniaturas muda (novo decoder, nova ordem, render no app):
     /// invalida o cache antigo sozinho, sem o usuario precisar limpar nada.
     /// </summary>
-    private const int VersaoCache = 4;
+    private const int VersaoCache = 3;
+
+    /// <summary>
+    /// Revisao por formato, para quando so o desenho de um tipo muda. Sem isso, refazer
+    /// os splats obrigaria a regerar TODA a grade de modelos — e a grade fica cheia de
+    /// icone enquanto a fila de render (2 por vez) nao termina.
+    /// </summary>
+    private static readonly Dictionary<string, int> VersaoFormato = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".ply"] = 2, // splats desenhados com 5 sigma de tamanho projetado
+    };
 
     public static string Chave(string caminho, long tamanho, DateTime modificado, int size)
     {
-        var raw = $"v{VersaoCache}|{caminho.ToLowerInvariant()}|{tamanho}|{modificado.Ticks}|{size}";
+        var ext = Path.GetExtension(caminho);
+        var formato = VersaoFormato.TryGetValue(ext, out var revisao) ? $"|{ext.ToLowerInvariant()}{revisao}" : string.Empty;
+        var raw = $"v{VersaoCache}{formato}|{caminho.ToLowerInvariant()}|{tamanho}|{modificado.Ticks}|{size}";
         var hash = SHA1.HashData(Encoding.UTF8.GetBytes(raw));
         return Convert.ToHexString(hash)[..20].ToLowerInvariant();
     }

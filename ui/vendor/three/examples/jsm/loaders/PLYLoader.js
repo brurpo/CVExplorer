@@ -5,7 +5,7 @@ import {
 	Loader,
 	Color,
 	SRGBColorSpace
-} from 'three';
+} from '../../../build/three.module.min.js';
 
 /**
  * Description: A THREE loader for PLY ASCII files (known as the Polygon

@@ -426,18 +426,26 @@ function iniciarCena({ aoPreparar, semModelo = false }) {
 
   const camera = new THREE.PerspectiveCamera(40, largura / altura, 0.0001, 10000);
 
-  const orbita = { azimute: 0.7, elevacao: 0.35, alvo: new THREE.Vector3() };
+  // A órbita é um quaternion, não azimute/elevação: com ângulos esféricos a câmera
+  // atravessa o polo e o mundo "vira" de lado. Com o giro acumulado (yaw no eixo
+  // vertical do mundo + pitch no eixo horizontal da tela) a rotação continua de onde
+  // parou e o modelo pode ficar de cabeça para baixo.
+  const orbita = {
+    rotacao: new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.35, 0.7, 0, 'YXZ')),
+    alvo: new THREE.Vector3(),
+  };
+  const eixoY = new THREE.Vector3(0, 1, 0);
+  const eixoX = new THREE.Vector3(1, 0, 0);
   let raioModelo = 1;
   let distancia = 3.2 * raioModelo;
   let panorama = false;
 
   const aplicarCamera = () => {
     const d = panorama ? 0.0001 : distancia;
-    camera.position.set(
-      orbita.alvo.x + d * Math.cos(orbita.elevacao) * Math.sin(orbita.azimute),
-      orbita.alvo.y + d * Math.sin(orbita.elevacao),
-      orbita.alvo.z + d * Math.cos(orbita.elevacao) * Math.cos(orbita.azimute),
-    );
+    camera.position.copy(orbita.alvo).add(new THREE.Vector3(0, 0, d).applyQuaternion(orbita.rotacao));
+    // O "cima" da câmera acompanha o giro: sem isso o `lookAt` força o horizonte a
+    // ficar nivelado e o modelo nunca aparece invertido.
+    camera.up.copy(eixoY).applyQuaternion(orbita.rotacao);
     camera.lookAt(orbita.alvo);
     renderizador.render(cena, camera);
   };
@@ -472,9 +480,10 @@ function iniciarCena({ aoPreparar, semModelo = false }) {
     anterior = { x: evento.clientX, y: evento.clientY };
 
     if (botao === 0) {
-      orbita.azimute -= dx * 0.008;
-      // Sem limite: dá para passar por cima dos polos e olhar de cabeça para baixo.
-      orbita.elevacao += dy * 0.008;
+      // Yaw no eixo vertical do mundo, pitch no eixo horizontal da tela, sem limite.
+      const giroY = new THREE.Quaternion().setFromAxisAngle(eixoY, -dx * 0.008);
+      const giroX = new THREE.Quaternion().setFromAxisAngle(eixoX, -dy * 0.008);
+      orbita.rotacao.premultiply(giroY).multiply(giroX);
     } else if (botao === 1) {
       const escala = Math.max(distancia, raioModelo) * 0.0016;
       const direita = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);

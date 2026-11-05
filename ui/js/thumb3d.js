@@ -30,8 +30,26 @@ function criarWorkers() {
   const lista = [];
   for (let i = 0; i < MAX_WORKERS; i++) {
     const worker = new Worker('./js/thumb3dWorker.js', { type: 'module' });
+    worker.pronto = false;
+
+    // Módulo que não carrega (import quebrado, WebGL sem suporte no worker) não pode
+    // custar o tempo limite inteiro por miniatura: sem o aviso de "pronto" em 5 s, o
+    // worker é aposentado e o render cai para a thread da interface.
+    worker.prazo = setTimeout(() => {
+      if (worker.pronto) return;
+      console.error('worker 3d não carregou; render na thread da interface');
+      aposentar(worker, new Error('worker 3d não carregou'));
+    }, 5000);
+
     worker.onmessage = (evento) => {
-      const { id, buffer, erro } = evento.data ?? {};
+      const { tipo, id, buffer, erro } = evento.data ?? {};
+
+      if (tipo === 'pronto') {
+        worker.pronto = true;
+        clearTimeout(worker.prazo);
+        return;
+      }
+
       const pendente = pendentes.get(id);
       if (!pendente) return;
 
@@ -42,30 +60,47 @@ function criarWorkers() {
         pendente.resolve(buffer);
       }
     };
+
     worker.onerror = (evento) => {
       console.error('worker 3d', evento.message);
-      // Devolve o erro a quem esperava: sem isso o pedido ficaria pendurado.
-      for (const [id, pendente] of pendentes) {
-        if (pendente.worker === worker) {
-          pendentes.delete(id);
-          pendente.reject(new Error(evento.message || 'worker 3d falhou'));
-        }
-      }
+      aposentar(worker, new Error(evento.message || 'worker 3d falhou'));
     };
+
     lista.push(worker);
   }
 
   return lista;
 }
 
+/** Marca o worker como inútil e devolve o erro a quem estava esperando por ele. */
+function aposentar(worker, erro) {
+  worker.quebrado = true;
+  clearTimeout(worker.prazo);
+
+  for (const [id, pendente] of pendentes) {
+    if (pendente.worker === worker) {
+      pendentes.delete(id);
+      pendente.reject(erro);
+    }
+  }
+
+  try {
+    worker.terminate();
+  } catch {
+    // já morto
+  }
+}
+
 /** Escolhe o worker com menos trabalho pendente (fila curta e previsível). */
 function proximoLivre() {
   workers ??= criarWorkers();
 
-  let escolhido = workers[0];
+  let escolhido = null;
   let menor = Infinity;
 
   for (const worker of workers) {
+    if (worker.quebrado) continue;
+
     let carga = 0;
     for (const pendente of pendentes.values()) {
       if (pendente.worker === worker) carga++;
@@ -74,6 +109,10 @@ function proximoLivre() {
       menor = carga;
       escolhido = worker;
     }
+  }
+
+  if (!escolhido) {
+    throw new Error('sem worker 3d disponível');
   }
 
   return escolhido;

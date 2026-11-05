@@ -239,7 +239,9 @@ miniatura chega** (antes era apagado junto com o ícone).
 
 Cache em disco (`%LOCALAPPDATA%\CVExplorer\miniaturas`), chaveado por **caminho + tamanho + data
 + tamanho pedido + versão do pipeline** — quando o pipeline muda, o cache antigo é invalidado
-sozinho em vez de servir miniatura velha.
+sozinho em vez de servir miniatura velha. A versão é **global ou por formato**: mexer só no desenho
+dos splats sobe a revisão do `.ply` e deixa o resto do cache em paz (subir a versão global obrigaria
+a regerar toda a grade de modelos, que fica mostrando o ícone de 3D enquanto a fila roda).
 
 ### Como as miniaturas são paralelas
 
