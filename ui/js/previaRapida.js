@@ -12,6 +12,7 @@ import * as splats from './gaussianSplats.js';
 import * as ambiente from './ambiente.js';
 import * as controlesVideo from './controlesVideo.js';
 import * as saidaAudio from './saidaAudio.js';
+import * as previaPdf from './previaPdf.js';
 
 /**
  * Prévia rápida: uma janela mínima com o item escolhido (barra de espaço no explorador).
@@ -55,6 +56,14 @@ export function iniciar(caminho) {
   prepararBarra();
   prepararSom(null);
 
+  // PDF fica com uma barra própria (páginas, zoom e as edições).
+  if (ext === 'pdf') {
+    const acoes = document.getElementById('previa-rapida-acoes');
+    if (acoes) acoes.hidden = true;
+    abrirPdf(caminho).catch(falhou);
+    return;
+  }
+
   if (categoria === 'modelo3d') {
     abrirModelo(caminho, ext).catch(falhou);
     return;
@@ -66,6 +75,12 @@ export function iniciar(caminho) {
   }
 
   abrirImagem(caminho).catch(falhou);
+}
+
+async function abrirPdf(caminho) {
+  atual.modo = 'pdf';
+  atual.limpar = () => previaPdf.fechar();
+  await previaPdf.abrir(caminho);
 }
 
 function encerrar() {

@@ -184,6 +184,12 @@ No estilo do Explorer, sem lista de projetos:
   roda) aproxima**. A órbita não tem trava de elevação: dá para passar por cima dos polos e olhar o
   modelo de cabeça para baixo. A janela é reaproveitada: apertar espaço noutro item troca o conteúdo
   em vez de abrir outra janela.
+- **PDF na mesma janela do espaço**: o `Espaço` num `.pdf` abre o documento com **pdf.js**
+  (página anterior/próxima, ajustar à largura, zoom) e a barra de edição: **Girar**, mover a página
+  para a esquerda/direita, **Excluir** e **Extrair** a página para um arquivo novo ao lado
+  (`nome - página N.pdf`). As edições ficam em memória até **Salvar**, que grava por cima deixando
+  `nome.pdf.bak` ao lado; **Descartar** volta ao arquivo original. Quem aplica as mudanças é o
+  **pdf-lib**; não é reescrita de texto (reflow), e sim operações de página.
 - **Ambiente e tone mapping na prévia 3D**: presets de HDRI **gerados na hora** (Estúdio, Pôr do sol,
   Noite, Neve — nada é baixado), **Carregar HDRI…** para um `.hdr`/`.exr` do usuário e o botão
   **Ver como ambiente**, que abre a imagem atual como panorama lat-long (equiretangular) com a câmera
@@ -227,7 +233,7 @@ miniatura chega** (antes era apagado junto com o ícone).
 |---|---|
 | JPG, PNG, WEBP, GIF, BMP, TIFF, TGA, HEIC, JXL | Shell do Windows → Magick.NET |
 | **PSD / PSB** | handler do Photoshop (Shell) → Magick.NET (composição achatada) |
-| **AI / PDF** | **pdf.js desenha a primeira página** (o `.ai` é um PDF por dentro); Shell como reserva |
+| **AI / PDF** | **pdf.js desenha a primeira página** (o `.ai` é um PDF por dentro). Os bytes vêm pelo bridge (`pdf.dados`), não pela URL de loopback — aquela é outra origem e o `fetch` do pdf.js é barrado. Sem página desenhável (protegido, corrompido), fica o **ícone de PDF** |
 | **SVG** | Magick.NET |
 | **EXR / HDR** | Magick.NET (com ajuste de exposição para não sair preta) |
 | **.blend** | **miniatura embutida no próprio arquivo** (bloco `TEST`), lida antes do Shell — instantânea, sem abrir o Blender. Funciona com arquivo comprimido (zstd, que é o padrão ao salvar) e com o cabeçalho novo do Blender 5 (`BLENDER17-01v0502`), por isso a leitura é por **varredura validada** do bloco, não por posição fixa |

@@ -113,10 +113,10 @@ function bombear() {
           return;
         }
 
-        if (resposta?.renderizar === 'pdf' && resposta.arquivoUrl) {
+        if (resposta?.renderizar === 'pdf') {
           filaPdf.push({
             k,
-            url: resposta.arquivoUrl,
+            caminho: pedido.item.Caminho ?? pedido.item.caminho,
             chave: resposta.chave,
             tipo: resposta.renderizar,
             ext: resposta.ext ?? (pedido.item.Nome ?? pedido.item.nome ?? '').split('.').pop(),
@@ -171,13 +171,20 @@ function bombearPdf() {
     ativosPdf++;
 
     thumbPdf
-      .gerar(pedido.url, pedido.tamanho)
+      .gerar(pedido.caminho, pedido.tamanho)
       .then((dados) => call('thumb.salvar', { chave: pedido.chave, dados }))
       .then((resposta) => {
-        if (resposta?.ok && resposta.url) concluir(pedido.k, resposta.url);
-        else registrarFalha(pedido.k);
+        if (resposta?.ok && resposta.url) {
+          concluir(pedido.k, resposta.url);
+        } else {
+          console.error('miniatura de pdf não salvou', pedido.caminho, JSON.stringify(resposta));
+          registrarFalha(pedido.k);
+        }
       })
-      .catch(() => registrarFalha(pedido.k))
+      .catch((erro) => {
+        console.error('miniatura de pdf falhou', pedido.caminho, erro?.message ?? erro);
+        registrarFalha(pedido.k);
+      })
       .finally(() => {
         ativosPdf--;
         bombearPdf();

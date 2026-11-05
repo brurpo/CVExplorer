@@ -812,7 +812,10 @@ function criarTelha(item, coluna, linha, largura, altura, alturaLinha) {
   const thumb = document.createElement('div');
   thumb.className = 'tile-thumb';
 
-  const usarMiniatura = !ehPasta && !['audio', 'documento', 'outro'].includes(cat);
+  // Documento comum fica no ícone; PDF e AI não — o pdf.js desenha a página inicial.
+  const usarMiniatura = !ehPasta
+    && !['audio', 'outro'].includes(cat)
+    && (cat !== 'documento' || ext === 'pdf' || ext === 'ai');
   const emCache = usarMiniatura ? thumbs.emCache(item) : null;
 
   if (emCache) {

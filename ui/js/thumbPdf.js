@@ -1,6 +1,12 @@
+import { call } from './bridge.js';
+import { deBase64 } from './bytes.js';
+
 /**
  * Miniatura de PDF/.ai (Illustrator salvo como "PDF compatible") desenhada com pdf.js
  * dentro do WebView2 — sem Illustrator, sem Ghostscript e sem abrir programa externo.
+ *
+ * Os bytes vêm pelo bridge (`pdf.dados`), não pela URL de loopback: aquela URL é de outra
+ * origem e o `fetch` do pdf.js é barrado — era por isso que PDF ficava só com o ícone.
  */
 let pdfjs = null;
 
@@ -17,15 +23,20 @@ async function carregarPdfjs() {
 
 /**
  * Renderiza a primeira pagina e devolve um data URL WebP.
- * @param {string} url URL do arquivo (servida pelo host em loopback).
+ * @param {string} caminho caminho do PDF no disco.
  * @param {number} tamanho lado da imagem em pixels de CSS.
  */
-export async function gerar(url, tamanho = 256) {
+export async function gerar(caminho, tamanho = 256) {
   const lib = await carregarPdfjs();
   const lado = Math.max(96, Math.min(512, Math.round(tamanho)));
 
+  const resposta = await call('pdf.dados', { caminho });
+  if (!resposta?.ok) {
+    throw new Error(resposta?.erro ?? 'PDF indisponível');
+  }
+
   const documento = await lib.getDocument({
-    url,
+    data: deBase64(resposta.dados),
     // Sem cmaps/extras: layout de logo/briefing nao precisa de fonte CJK embutida.
     useSystemFonts: true,
     disableAutoFetch: true,

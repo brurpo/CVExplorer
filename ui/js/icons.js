@@ -4,6 +4,14 @@ const DOCUMENTO =
   '<path d="M6 3.2h6.5L18 8.7V20.8H6z" fill="currentColor" stroke="none"/>'
   + '<path d="M12.5 3.2v5.5H18" fill="none" stroke="var(--surface-2)" stroke-width="1.5"/>';
 
+// PDF: mesma folha do documento, com uma tarja cheia embaixo — a silhueta muda o
+// suficiente para não se confundir com um arquivo qualquer.
+const PDF =
+  '<path d="M6 3.2h6.5L18 8.7V20.8H6z"/>'
+  + '<path d="M12.5 3.2v5.5H18"/>'
+  + '<path d="M5.4 15.6h13.2v5.2H5.4z" fill="currentColor" stroke="none"/>'
+  + '<path d="M8 18.2h3M12.4 18.2h3.4" stroke="var(--surface-2)" stroke-width="1.1"/>';
+
 /**
  * Ícones de tipo em PNG (256px, neutros, do acervo do BRP_CHROMA): em grade e em
  * lista aparecem nítidos em qualquer tamanho, inclusive com escala 150%.
@@ -93,6 +101,10 @@ export function iconeUnidade(tipo) {
 export function icone(categoria, ext) {
   if (categoria === 'compactado') {
     return `<svg class="icone-compactado" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">${COMPACTADO}</svg>`;
+  }
+
+  if (ext === 'pdf') {
+    return `<svg class="icone-pdf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${PDF}</svg>`;
   }
 
   const chave = VETORES.includes(ext) ? 'vetor' : categoria;

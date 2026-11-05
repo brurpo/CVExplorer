@@ -212,6 +212,86 @@ public static class Commands
             return Task.FromResult<object?>(new { ok = true, janela = janela.Id, reutilizada = false });
         });
 
+        // Bytes crus do PDF para a interface: pdf.js desenha a prévia e pdf-lib edita.
+        // O caminho da URL de loopback não serve aqui: é outro origem e o fetch é barrado.
+        Add("pdf.dados", (args, _) =>
+        {
+            var caminho = Str(args, "caminho");
+            if (string.IsNullOrWhiteSpace(caminho) || !File.Exists(caminho))
+            {
+                return Task.FromResult<object?>(new { ok = false, erro = "arquivo não encontrado" });
+            }
+
+            try
+            {
+                var info = new FileInfo(caminho);
+                if (info.Length > 200L * 1024 * 1024)
+                {
+                    return Task.FromResult<object?>(new { ok = false, erro = "PDF acima de 200 MB" });
+                }
+
+                var bytes = File.ReadAllBytes(caminho);
+                return Task.FromResult<object?>(new
+                {
+                    ok = true,
+                    nome = Path.GetFileName(caminho),
+                    tamanho = bytes.Length,
+                    dados = Convert.ToBase64String(bytes),
+                });
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult<object?>(new { ok = false, erro = ex.Message });
+            }
+        });
+
+        // Grava o PDF editado na interface. Sempre deixa um .bak ao lado antes de sobrescrever.
+        Add("pdf.salvar", (args, _) =>
+        {
+            var caminho = Str(args, "caminho");
+            var base64 = Str(args, "dados");
+            if (string.IsNullOrWhiteSpace(caminho) || string.IsNullOrWhiteSpace(base64))
+            {
+                return Task.FromResult<object?>(new { ok = false, erro = "dados ausentes" });
+            }
+
+            byte[] bytes;
+            try
+            {
+                bytes = Convert.FromBase64String(base64);
+            }
+            catch (FormatException)
+            {
+                return Task.FromResult<object?>(new { ok = false, erro = "conteúdo inválido" });
+            }
+
+            // Um arquivo que não começa com %PDF não deve chegar ao disco com esse nome.
+            if (bytes.Length < 5 || bytes[0] != (byte)'%' || bytes[1] != (byte)'P'
+                || bytes[2] != (byte)'D' || bytes[3] != (byte)'F')
+            {
+                return Task.FromResult<object?>(new { ok = false, erro = "não é um PDF" });
+            }
+
+            try
+            {
+                host.Player.LiberarPorCaminho(new[] { caminho });
+                host.Thumbs.Liberar(new[] { caminho });
+
+                var backup = caminho + ".bak";
+                if (File.Exists(caminho))
+                {
+                    File.Copy(caminho, backup, overwrite: true);
+                }
+
+                File.WriteAllBytes(caminho, bytes);
+                return Task.FromResult<object?>(new { ok = true, backup, tamanho = bytes.Length });
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult<object?>(new { ok = false, erro = ex.Message });
+            }
+        });
+
         // URL loopback do arquivo cru (o three.js lê o modelo direto dela).
         Add("fs.arquivoUrl", (args, _) =>
         {

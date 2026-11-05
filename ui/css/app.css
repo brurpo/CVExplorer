@@ -1594,6 +1594,52 @@ body[data-modo="previa"] {
 
 .previa-quadro.visivel { display: block; }
 
+/* ---- PDF na prévia rápida ---- */
+
+.pdf-area {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  overflow: auto;
+  background: #121316;
+}
+
+.pdf-canvas {
+  display: block;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.pdf-pagina {
+  min-width: 62px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* A barra do PDF tem muitos botões: aperta o espaçamento para caber numa linha. */
+#previa-pdf-acoes {
+  gap: 6px;
+}
+
+#previa-pdf-acoes .previa-btn {
+  padding: 0 7px;
+}
+
+.previa-btn.pdf-salvar:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.previa-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .previa-rapida-canvas {
   display: block;
   width: 100%;
