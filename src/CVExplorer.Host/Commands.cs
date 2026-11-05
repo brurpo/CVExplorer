@@ -278,13 +278,14 @@ public static class Commands
                 host.Thumbs.Liberar(new[] { caminho });
 
                 var backup = caminho + ".bak";
-                if (File.Exists(caminho))
+                var copiou = File.Exists(caminho);
+                if (copiou)
                 {
                     File.Copy(caminho, backup, overwrite: true);
                 }
 
                 File.WriteAllBytes(caminho, bytes);
-                return Task.FromResult<object?>(new { ok = true, backup, tamanho = bytes.Length });
+                return Task.FromResult<object?>(new { ok = true, backup = copiou ? backup : null, tamanho = bytes.Length });
             }
             catch (Exception ex)
             {

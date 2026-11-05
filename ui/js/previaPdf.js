@@ -71,9 +71,21 @@ export async function abrir(caminho) {
 
   const area = document.createElement('div');
   area.className = 'pdf-area';
+
+  const caixa = document.createElement('div');
+  caixa.className = 'pdf-pagina-caixa';
+
   const canvas = document.createElement('canvas');
   canvas.className = 'pdf-canvas';
-  area.append(canvas);
+
+  const camadaTexto = document.createElement('div');
+  camadaTexto.className = 'textLayer';
+
+  const camadaAnotacoes = document.createElement('div');
+  camadaAnotacoes.className = 'annotationLayer';
+
+  caixa.append(canvas, camadaTexto, camadaAnotacoes);
+  area.append(caixa);
   corpo.replaceChildren(area);
 
   estado = {
@@ -86,7 +98,11 @@ export async function abrir(caminho) {
     total: 0,
     escala: 0, // 0 = ajustar à largura
     canvas,
+    caixa,
     area,
+    camadaTexto,
+    camadaAnotacoes,
+    valores: new Map(),
   };
 
   ligarBarra();
@@ -114,6 +130,7 @@ async function recarregar(pagina) {
 
   estado.total = estado.documento.numPages;
   estado.pagina = Math.min(Math.max(1, pagina), Math.max(1, estado.total));
+
   await desenhar();
 }
 
@@ -138,6 +155,8 @@ async function desenhar() {
   estado.canvas.height = Math.max(1, Math.round(viewport.height * proporcao));
   estado.canvas.style.width = `${Math.round(viewport.width)}px`;
   estado.canvas.style.height = `${Math.round(viewport.height)}px`;
+  estado.caixa.style.width = `${Math.round(viewport.width)}px`;
+  estado.caixa.style.height = `${Math.round(viewport.height)}px`;
 
   const contexto = estado.canvas.getContext('2d', { alpha: false });
   contexto.setTransform(proporcao, 0, 0, proporcao, 0, 0);
@@ -146,7 +165,153 @@ async function desenhar() {
 
   await pagina.render({ canvasContext: contexto, viewport }).promise;
 
+  await desenharCamadas(pagina, viewport);
   atualizarBarra();
+}
+
+/**
+ * Camada de texto (selecionar/copiar) e de campos de formulário, por cima do desenho.
+ *
+ * Os campos são desenhados aqui mesmo: o `AnnotationStorage`/`AnnotationLayer` do pdf.js é
+ * do pacote do *viewer* e não vem neste build — e para o pdf-lib o que interessa é o
+ * `fieldName` de cada widget, que a API de anotações já entrega.
+ */
+async function desenharCamadas(pagina, viewport) {
+  const lib = await carregarPdfjs();
+
+  estado.camadaTexto.replaceChildren();
+  estado.camadaAnotacoes.replaceChildren();
+
+  try {
+    const texto = new lib.TextLayer({
+      textContentSource: pagina.streamTextContent(),
+      container: estado.camadaTexto,
+      viewport,
+    });
+    await texto.render();
+  } catch {
+    // sem camada de texto a página continua visível; só não dá para selecionar
+  }
+
+  let anotacoes = [];
+  try {
+    anotacoes = await pagina.getAnnotations();
+  } catch {
+    return;
+  }
+
+  for (const anotacao of anotacoes) {
+    if (anotacao.subtype !== 'Widget' || !anotacao.fieldName || anotacao.readOnly) continue;
+    if (anotacao.fieldType === 'Sig') continue;
+
+    const [x1, y1, x2, y2] = viewport.convertToViewportRectangle(anotacao.rect);
+    const esquerda = Math.min(x1, x2);
+    const topo = Math.min(y1, y2);
+    const largura = Math.max(8, Math.abs(x2 - x1));
+    const altura = Math.max(8, Math.abs(y2 - y1));
+
+    const salvo = estado.valores.get(anotacao.fieldName);
+    const valor = salvo ? salvo.valor : anotacao.fieldValue;
+
+    const campo = criarCampo(anotacao, valor);
+    campo.style.left = `${esquerda}px`;
+    campo.style.top = `${topo}px`;
+    campo.style.width = `${largura}px`;
+    campo.style.height = `${altura}px`;
+    campo.style.fontSize = `${Math.max(9, Math.round(altura * 0.62))}px`;
+    campo.dataset.campo = anotacao.fieldName;
+
+    estado.camadaAnotacoes.appendChild(campo);
+  }
+}
+
+function criarCampo(anotacao, valor) {
+  let campo;
+
+  if (anotacao.fieldType === 'Btn' && anotacao.checkBox) {
+    campo = document.createElement('input');
+    campo.type = 'checkbox';
+    campo.checked = valor === true || valor === anotacao.exportValue || valor === 'On';
+    campo.className = 'pdf-campo pdf-campo-marca';
+  } else if (anotacao.fieldType === 'Ch' && Array.isArray(anotacao.options) && anotacao.options.length > 0) {
+    campo = document.createElement('select');
+    campo.className = 'pdf-campo';
+    for (const opcao of anotacao.options) {
+      const item = document.createElement('option');
+      item.value = opcao.exportValue ?? opcao.displayValue ?? String(opcao);
+      item.textContent = opcao.displayValue ?? opcao.exportValue ?? String(opcao);
+      campo.appendChild(item);
+    }
+    if (typeof valor === 'string') campo.value = valor;
+  } else {
+    campo = document.createElement('input');
+    campo.type = 'text';
+    campo.className = 'pdf-campo';
+    campo.value = typeof valor === 'string' ? valor : '';
+  }
+
+  campo.addEventListener('input', () => registrarValor(campo));
+  campo.addEventListener('change', () => registrarValor(campo));
+  return campo;
+}
+
+/** Guarda o que foi digitado: o valor precisa sobreviver à troca de página e ao salvar. */
+function registrarValor(campo) {
+  if (!estado) return;
+
+  const nome = campo.dataset.campo;
+  if (!nome) return;
+
+  const valor = campo.type === 'checkbox' ? campo.checked : campo.value;
+  estado.valores.set(nome, { valor, tipo: campo.type === 'checkbox' ? 'marca' : 'texto' });
+
+  estado.sujo = true;
+  atualizarBarra();
+}
+
+/**
+ * Leva os campos preenchidos na tela para dentro do PDF (pdf-lib). Sem isso, girar uma
+ * página jogaria fora o que o usuário digitou nos formulários.
+ */
+function aplicarCampos(documento) {
+  if (!estado || estado.valores.size === 0) return;
+
+  let formulario;
+  try {
+    formulario = documento.getForm();
+  } catch {
+    return;
+  }
+
+  for (const [nome, { valor, tipo }] of estado.valores) {
+    let campo;
+    try {
+      campo = formulario.getField(nome);
+    } catch {
+      continue;
+    }
+
+    if (!campo) continue;
+
+    try {
+      if (tipo === 'marca' && typeof campo.check === 'function') {
+        if (valor) campo.check();
+        else campo.uncheck();
+      } else if (typeof campo.setText === 'function') {
+        campo.setText(String(valor ?? ''));
+      } else if (typeof campo.select === 'function') {
+        campo.select(String(valor ?? ''));
+      }
+    } catch {
+      // campo somente leitura ou de tipo que o pdf-lib não reescreve
+    }
+  }
+
+  try {
+    formulario.updateFieldAppearances?.();
+  } catch {
+    // sem aparência atualizada o valor continua gravado
+  }
 }
 
 /** Aplica uma edição com pdf-lib e recarrega a prévia com o resultado. */
@@ -156,6 +321,7 @@ async function editar(acao, paginaDepois) {
   const lib = await carregarPdfLib();
   const documento = await lib.PDFDocument.load(estado.bytes, { updateMetadata: false });
 
+  aplicarCampos(documento);
   await acao(documento, lib);
 
   estado.bytes = await documento.save();
@@ -219,6 +385,14 @@ async function extrair() {
 async function salvar() {
   if (!estado?.sujo) return;
 
+  // Campos preenchidos na tela entram no arquivo; sem isso o que foi digitado se perde.
+  if (estado.valores.size > 0) {
+    const lib = await carregarPdfLib();
+    const documento = await lib.PDFDocument.load(estado.bytes, { updateMetadata: false });
+    aplicarCampos(documento);
+    estado.bytes = await documento.save();
+  }
+
   const resposta = await call('pdf.salvar', {
     caminho: estado.caminho,
     dados: paraBase64(estado.bytes),
@@ -231,7 +405,7 @@ async function salvar() {
 
   estado.original = estado.bytes;
   estado.sujo = false;
-  atualizarBarra();
+  await recarregar(estado.pagina);
   ui.toast(t('pdf.salvo'), 'ok', 4000);
 }
 
@@ -281,27 +455,62 @@ function ligarBarra() {
     ['pdf-proxima', () => irPara((estado?.pagina ?? 1) + 1)],
     ['pdf-zoom-menos', () => mudarZoom(-0.25)],
     ['pdf-zoom-mais', () => mudarZoom(0.25)],
-    ['pdf-ajustar', () => { if (estado) { estado.escala = 0; desenhar(); } }],
+    ['pdf-ajustar', () => ajustar()],
+    ['pdf-original', () => definirZoom(1)],
     ['pdf-girar', () => girar()],
-    ['pdf-mover-esq', () => mover(-1)],
-    ['pdf-mover-dir', () => mover(1)],
-    ['pdf-excluir', () => excluir()],
-    ['pdf-extrair', () => extrair()],
+    ['pdf-menu', (evento) => abrirMenuPaginas(evento.currentTarget)],
     ['pdf-salvar', () => salvar()],
     ['pdf-descartar', () => descartar()],
   ];
 
   for (const [id, acao] of cliques) {
-    porId(id)?.addEventListener('click', () => {
-      Promise.resolve(acao()).catch((erro) => {
+    porId(id)?.addEventListener('click', (evento) => {
+      Promise.resolve(acao(evento)).catch((erro) => {
         ui.toast(t('pdf.erro', { motivo: erro?.message ?? '—' }), 'erro', 6000);
       });
     });
   }
 
+  // Botão direito: seleção, giro, ordem das páginas e extração no mesmo lugar.
+  document.getElementById('previa-rapida-corpo')?.addEventListener('contextmenu', (evento) => {
+    if (!estado) return;
+    evento.preventDefault();
+    abrirMenuPaginas(null, evento.clientX, evento.clientY);
+  });
+
   document.addEventListener('keydown', atalhos);
   ligada = true;
   atualizarBarra();
+}
+
+/** Menu das operações de página — vale para o botão da barra e para o botão direito. */
+function abrirMenuPaginas(botao, x, y) {
+  if (!estado) return;
+
+  const selecao = String(window.getSelection() ?? '').trim();
+  const base = botao?.getBoundingClientRect();
+
+  const itens = [
+    { rotulo: t('pdf.copiar'), atalho: 'Ctrl+C', desabilitado: !selecao, acao: () => copiarTexto(selecao) },
+    { separador: true },
+    { rotulo: t('pdf.girar'), acao: () => girar() },
+    { rotulo: t('pdf.moverEsquerda'), desabilitado: estado.pagina <= 1, acao: () => mover(-1) },
+    { rotulo: t('pdf.moverDireita'), desabilitado: estado.pagina >= estado.total, acao: () => mover(1) },
+    { separador: true },
+    { rotulo: t('pdf.extrair'), acao: () => extrair() },
+    { rotulo: t('pdf.excluir'), perigo: true, desabilitado: estado.total <= 1, acao: () => excluir() },
+  ];
+
+  ui.menuContexto(x ?? base?.left ?? 0, y ?? (base?.bottom ?? 0) + 4, itens);
+}
+
+async function copiarTexto(texto) {
+  try {
+    await navigator.clipboard.writeText(texto);
+    ui.toast(t('pdf.copiado'), 'ok', 2400);
+  } catch {
+    ui.toast(t('pdf.copiarFalhou'), 'erro', 4000);
+  }
 }
 
 function atalhos(evento) {
@@ -316,7 +525,21 @@ async function mudarZoom(delta) {
   if (!estado) return;
 
   const atual = estado.escalaAtual ?? estado.escala ?? 1;
-  estado.escala = Math.min(4, Math.max(0.25, atual + delta));
+  await definirZoom(atual + delta);
+}
+
+/** `escala` 0 = ajustar à largura; qualquer outro valor é o zoom absoluto. */
+async function definirZoom(escala) {
+  if (!estado) return;
+
+  estado.escala = Math.min(4, Math.max(0.2, escala));
+  await desenhar();
+}
+
+async function ajustar() {
+  if (!estado) return;
+
+  estado.escala = 0;
   await desenhar();
 }
 
@@ -326,18 +549,13 @@ function atualizarBarra() {
   const rotulo = porId('pdf-pagina');
   if (rotulo) rotulo.textContent = t('pdf.pagina', { atual: estado.pagina, total: estado.total });
 
+  const zoom = porId('pdf-zoom');
+  if (zoom) zoom.textContent = `${Math.round((estado.escalaAtual ?? 1) * 100)}%`;
+
   const anterior = porId('pdf-anterior');
   const proxima = porId('pdf-proxima');
   if (anterior) anterior.disabled = estado.pagina <= 1;
   if (proxima) proxima.disabled = estado.pagina >= estado.total;
-
-  const excluirBotao = porId('pdf-excluir');
-  if (excluirBotao) excluirBotao.disabled = estado.total <= 1;
-
-  const esquerda = porId('pdf-mover-esq');
-  const direita = porId('pdf-mover-dir');
-  if (esquerda) esquerda.disabled = estado.pagina <= 1;
-  if (direita) direita.disabled = estado.pagina >= estado.total;
 
   const salvarBotao = porId('pdf-salvar');
   const descartarBotao = porId('pdf-descartar');
