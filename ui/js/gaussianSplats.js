@@ -3,11 +3,15 @@ import * as THREE from '../vendor/three/build/three.module.min.js';
 /**
  * Gaussian Splats (.ply com as propriedades f_dc_/opacity/scale_/rot_).
  *
- * three.js não traz renderizador de splats, então o parse e o desenho são daqui:
- * cada splat vira um ponto cuja largura em pixels vem da escala do PLY projetada pela
+ * three.js não traz renderizador de splats, então o parse e o desenho são daqui: cada
+ * splat vira um quad cuja largura em pixels vem da escala do PLY projetada pela
  * perspectiva (`escala * focal / profundidade`), com o mesmo perfil gaussiano do splat
- * original. A ordem é resolvida uma vez (de trás para frente), o que basta para olhar um
- * resultado — não é um treino nem um viewer de produção.
+ * original.
+ *
+ * Alpha blending só fica certo na ordem certa, então a nuvem é **reordenada por
+ * profundidade a cada mudança de câmera**: counting sort de 12 bits sobre a projeção no
+ * eixo de visão, escrevendo só um atributo de índice (a posição/cor mora em texturas e
+ * não é copiada). Sem isso os splats de trás aparecem por cima dos da frente.
  */
 const SH_C0 = 0.28209479177387814;
 
@@ -17,6 +21,12 @@ const SH_C0 = 0.28209479177387814;
  * rala.
  */
 const EXTENSAO = 5;
+
+/** Splats por linha da textura de dados. */
+const LARGURA_TEXTURA = 2048;
+
+/** Baldes do counting sort: 4096 é o suficiente para não aparecer emenda de ordem. */
+const BALDES = 4096;
 
 /** Lê o cabeçalho e diz se o PLY é de splats (tem f_dc_0) em vez de malha. */
 export function ehSplat(buffer) {
@@ -30,58 +40,113 @@ export async function carregar(url) {
     throw new Error(`não consegui baixar o PLY (${resposta.status})`);
   }
 
-  const buffer = await resposta.arrayBuffer();
-  const dados = lerPly(buffer);
+  const dados = lerPly(await resposta.arrayBuffer());
+  return criarNuvem(dados);
+}
 
-  const geometria = new THREE.BufferGeometry();
-  geometria.setAttribute('position', new THREE.Float32BufferAttribute(dados.posicoes, 3));
-  geometria.setAttribute('aCor', new THREE.Float32BufferAttribute(dados.cores, 3));
-  geometria.setAttribute('aAlfa', new THREE.Float32BufferAttribute(dados.alphas, 1));
-  geometria.setAttribute('aEscala', new THREE.Float32BufferAttribute(dados.escalas, 1));
+function criarNuvem(dados) {
+  const n = dados.quantidade;
+  const alturaTextura = Math.ceil(n / LARGURA_TEXTURA);
+  const total = LARGURA_TEXTURA * alturaTextura;
+
+  // Duas texturas RGBA32F: posição+escala e cor+alfa. A reordenação mexe só no índice,
+  // então nada disso é copiado quando a câmera gira.
+  const texPosicao = new Float32Array(total * 4);
+  const texCor = new Float32Array(total * 4);
+
+  for (let i = 0; i < n; i++) {
+    texPosicao[i * 4] = dados.posicoes[i * 3];
+    texPosicao[i * 4 + 1] = dados.posicoes[i * 3 + 1];
+    texPosicao[i * 4 + 2] = dados.posicoes[i * 3 + 2];
+    texPosicao[i * 4 + 3] = dados.escalas[i];
+
+    texCor[i * 4] = dados.cores[i * 3];
+    texCor[i * 4 + 1] = dados.cores[i * 3 + 1];
+    texCor[i * 4 + 2] = dados.cores[i * 3 + 2];
+    texCor[i * 4 + 3] = dados.alphas[i];
+  }
+
+  const texturaPosicao = new THREE.DataTexture(texPosicao, LARGURA_TEXTURA, alturaTextura, THREE.RGBAFormat, THREE.FloatType);
+  const texturaCor = new THREE.DataTexture(texCor, LARGURA_TEXTURA, alturaTextura, THREE.RGBAFormat, THREE.FloatType);
+  for (const textura of [texturaPosicao, texturaCor]) {
+    textura.minFilter = THREE.NearestFilter;
+    textura.magFilter = THREE.NearestFilter;
+    textura.generateMipmaps = false;
+    textura.needsUpdate = true;
+  }
+
+  const ordem = new Float32Array(n);
+  for (let i = 0; i < n; i++) ordem[i] = i;
+
+  const quad = new THREE.PlaneGeometry(2, 2);
+  const geometria = new THREE.InstancedBufferGeometry();
+  geometria.index = quad.index;
+  geometria.setAttribute('position', quad.getAttribute('position'));
+  const atributoOrdem = new THREE.InstancedBufferAttribute(ordem, 1);
+  atributoOrdem.setUsage(THREE.DynamicDrawUsage);
+  geometria.setAttribute('aIx', atributoOrdem);
+  geometria.instanceCount = n;
 
   const material = new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3,
     uniforms: {
-      uAlturaTela: { value: 900 },
+      uPosicao: { value: texturaPosicao },
+      uCor: { value: texturaCor },
+      uLarguraTextura: { value: LARGURA_TEXTURA },
+      uTela: { value: new THREE.Vector2(900, 900) },
     },
     vertexShader: `
-      attribute vec3 aCor;
-      attribute float aAlfa;
-      attribute float aEscala;
-      uniform float uAlturaTela;
-      varying vec3 vCor;
-      varying float vAlfa;
+      in float aIx;
+      uniform sampler2D uPosicao;
+      uniform sampler2D uCor;
+      uniform float uLarguraTextura;
+      uniform vec2 uTela;
+      out vec3 vCor;
+      out float vAlfa;
+      out vec2 vCanto;
 
       void main() {
-        vCor = aCor;
-        vAlfa = aAlfa;
+        int i = int(aIx + 0.5);
+        int largura = int(uLarguraTextura);
+        ivec2 uv = ivec2(i % largura, i / largura);
+        vec4 p = texelFetch(uPosicao, uv, 0);
+        vec4 c = texelFetch(uCor, uv, 0);
 
-        vec4 visto = modelViewMatrix * vec4(position, 1.0);
-        gl_Position = projectionMatrix * visto;
+        vCor = c.rgb;
+        vAlfa = c.a;
+        vCanto = position.xy;
 
-        // Focal em pixels vem da própria matriz de projeção: assim a mudança de FOV
-        // (modelo x panorama) e o zoom não exigem recalcular nada na CPU.
-        float focal = 0.5 * uAlturaTela * projectionMatrix[1][1];
-        float sigma = aEscala * focal / max(-visto.z, 0.0001);
+        vec4 visto = modelViewMatrix * vec4(p.xyz, 1.0);
+        vec4 clip = projectionMatrix * visto;
 
-        // O quad precisa cobrir a gaussiana inteira (ver EXTENSAO), não só 1σ.
-        gl_PointSize = clamp(${EXTENSAO.toFixed(1)} * sigma, 1.0, 2048.0);
+        // Focal em pixels vem da própria matriz de projeção: mudar FOV (modelo x
+        // panorama) ou zoom não exige recalcular nada na CPU.
+        float focal = 0.5 * uTela.y * projectionMatrix[1][1];
+        float sigma = p.w * focal / max(-visto.z, 0.0001);
+        float lado = clamp(${EXTENSAO.toFixed(1)} * sigma, 1.0, 4096.0);
+
+        // Quad em pixels convertido para clip space (por isso o *clip.w).
+        vec2 desloc = position.xy * vec2(lado / uTela.x, lado / uTela.y);
+        gl_Position = clip;
+        gl_Position.xy += desloc * clip.w;
       }
     `,
     fragmentShader: `
-      varying vec3 vCor;
-      varying float vAlfa;
+      in vec3 vCor;
+      in float vAlfa;
+      in vec2 vCanto;
+      out vec4 fragColor;
 
       void main() {
-        vec2 d = gl_PointCoord - vec2(0.5);
-        float r2 = dot(d, d);
-        if (r2 > 0.25) discard;
+        // vCanto vai de -1 a 1 na borda do quad, que cobre EXTENSAO/2 sigma por lado.
+        float r2 = dot(vCanto, vCanto);
+        if (r2 > 1.0) discard;
 
-        // Perfil gaussiano: o deslocamento em sigmas é r * EXTENSAO, então
-        // alfa = exp(-0.5 * (r * EXTENSAO)^2).
-        float peso = exp(-${((EXTENSAO * EXTENSAO) / 2).toFixed(4)} * r2);
+        // alfa = exp(-0.5 * (r * 2,5)^2)
+        float peso = exp(-${((EXTENSAO * EXTENSAO) / 8).toFixed(4)} * r2);
         if (peso < 0.004) discard;
 
-        gl_FragColor = vec4(vCor, vAlfa * peso);
+        fragColor = vec4(vCor, vAlfa * peso);
       }
     `,
     transparent: true,
@@ -89,31 +154,104 @@ export async function carregar(url) {
     depthTest: true,
   });
 
-  const pontos = new THREE.Points(geometria, material);
-  // Já vem ordenado do centro para fora: o que está longe desenha primeiro.
-  pontos.frustumCulled = false;
+  const malha = new THREE.Mesh(geometria, material);
+  malha.frustumCulled = false;
 
   const grupo = new THREE.Group();
-  grupo.add(pontos);
+  grupo.add(malha);
 
-  const caixa = new THREE.Box3().setFromBufferAttribute(geometria.getAttribute('position'));
+  const caixa = new THREE.Box3().setFromBufferAttribute(new THREE.Float32BufferAttribute(dados.posicoes, 3));
   const centro = caixa.getCenter(new THREE.Vector3());
   const raio = Math.max(caixa.getBoundingSphere(new THREE.Sphere()).radius, 0.001);
+
+  // ---- ordem por profundidade ---------------------------------------------
+
+  const profundidades = new Float32Array(n);
+  const contagem = new Uint32Array(BALDES + 1);
+  const eixoVisao = new THREE.Vector3();
+  const ultimaCamera = { x: NaN, y: NaN, z: NaN, dx: NaN, dy: NaN, dz: NaN };
+
+  function aplicarOrdem() {
+    const { x: cx, y: cy, z: cz } = ultimaCamera;
+    const { x: dx, y: dy, z: dz } = ultimaCamera;
+    const posicoes = dados.posicoes;
+
+    let menor = Infinity;
+    let maior = -Infinity;
+
+    for (let i = 0; i < n; i++) {
+      const d = (posicoes[i * 3] - cx) * dx + (posicoes[i * 3 + 1] - cy) * dy + (posicoes[i * 3 + 2] - cz) * dz;
+      profundidades[i] = d;
+      if (d < menor) menor = d;
+      if (d > maior) maior = d;
+    }
+
+    contagem.fill(0);
+    const escala = maior - menor > 1e-9 ? (BALDES - 1) / (maior - menor) : 0;
+    for (let i = 0; i < n; i++) {
+      // Balde 0 = mais longe: desenhar de trás para frente é o que o alpha blending pede.
+      contagem[((maior - profundidades[i]) * escala) | 0]++;
+    }
+
+    let soma = 0;
+    for (let b = 0; b < BALDES; b++) {
+      const quantidade = contagem[b];
+      contagem[b] = soma;
+      soma += quantidade;
+    }
+
+    for (let i = 0; i < n; i++) {
+      ordem[contagem[((maior - profundidades[i]) * escala) | 0]++] = i;
+    }
+
+    atributoOrdem.needsUpdate = true;
+  }
+
+  /**
+   * Reordena quando a câmera mudou de verdade: o desenho é síncrono, então basta não
+   * repetir a ordenação em eventos de mouse que não mudam a vista.
+   */
+  function atualizarCamera(camera) {
+    if (!camera || n === 0) return;
+
+    camera.getWorldDirection(eixoVisao);
+    const p = camera.position;
+    const mudou = Number.isNaN(ultimaCamera.x)
+      || Math.abs(p.x - ultimaCamera.x) + Math.abs(p.y - ultimaCamera.y)
+        + Math.abs(p.z - ultimaCamera.z) + Math.abs(eixoVisao.x - ultimaCamera.dx)
+        + Math.abs(eixoVisao.y - ultimaCamera.dy) + Math.abs(eixoVisao.z - ultimaCamera.dz) > 1e-5;
+
+    if (!mudou) return;
+
+    ultimaCamera.x = p.x;
+    ultimaCamera.y = p.y;
+    ultimaCamera.z = p.z;
+    ultimaCamera.dx = eixoVisao.x;
+    ultimaCamera.dy = eixoVisao.y;
+    ultimaCamera.dz = eixoVisao.z;
+
+    aplicarOrdem();
+  }
 
   return {
     objeto: grupo,
     centro,
     raio,
-    /** Altura do buffer de desenho em pixels; a focal em pixels sai daí, na GPU. */
-    atualizarTela(alturaPx) {
-      material.uniforms.uAlturaTela.value = alturaPx;
+    /** Tamanho do buffer de desenho em pixels (a focal em pixels sai daí, na GPU). */
+    atualizarTela(larguraPx, alturaPx) {
+      material.uniforms.uTela.value.set(larguraPx, alturaPx);
     },
+    atualizarCamera,
     dispose() {
+      quad.dispose();
       geometria.dispose();
       material.dispose();
+      texturaPosicao.dispose();
+      texturaCor.dispose();
     },
   };
 }
+
 
 // ---- leitura do PLY ------------------------------------------------------
 
@@ -192,17 +330,13 @@ function lerPly(buffer) {
   const cores = new Float32Array(quantidade * 3);
   const alphas = new Float32Array(quantidade);
   const escalas = new Float32Array(quantidade);
-  const ordem = [];
 
   for (let i = 0; i < quantidade; i++) {
     const base = i * tamanhoRegistro;
-    const x = valor('x', base);
-    const y = valor('y', base);
-    const z = valor('z', base);
 
-    posicoes[i * 3] = x;
-    posicoes[i * 3 + 1] = y;
-    posicoes[i * 3 + 2] = z;
+    posicoes[i * 3] = valor('x', base);
+    posicoes[i * 3 + 1] = valor('y', base);
+    posicoes[i * 3 + 2] = valor('z', base);
 
     cores[i * 3] = Math.min(1, Math.max(0, 0.5 + SH_C0 * valor('f_dc_0', base)));
     cores[i * 3 + 1] = Math.min(1, Math.max(0, 0.5 + SH_C0 * valor('f_dc_1', base)));
@@ -215,29 +349,8 @@ function lerPly(buffer) {
     const sy = deslocamentos.scale_1 ? Math.exp(valor('scale_1', base)) : sx;
     const sz = deslocamentos.scale_2 ? Math.exp(valor('scale_2', base)) : sx;
     escalas[i] = Math.max(sx, sy, sz);
-
-    ordem.push({ i, d: x * x + y * y + z * z });
   }
 
-  // Sem ordenação por câmera: do mais distante do centro para o mais próximo.
-  ordem.sort((a, b) => b.d - a.d);
-
-  const posicoesOrdenadas = new Float32Array(quantidade * 3);
-  const coresOrdenadas = new Float32Array(quantidade * 3);
-  const alphasOrdenados = new Float32Array(quantidade);
-  const escalasOrdenadas = new Float32Array(quantidade);
-
-  ordem.forEach((item, destino) => {
-    posicoesOrdenadas.set(posicoes.subarray(item.i * 3, item.i * 3 + 3), destino * 3);
-    coresOrdenadas.set(cores.subarray(item.i * 3, item.i * 3 + 3), destino * 3);
-    alphasOrdenados[destino] = alphas[item.i];
-    escalasOrdenadas[destino] = escalas[item.i];
-  });
-
-  return {
-    posicoes: posicoesOrdenadas,
-    cores: coresOrdenadas,
-    alphas: alphasOrdenados,
-    escalas: escalasOrdenadas,
-  };
+  // Sem ordenação aqui: a ordem é por câmera, refeita a cada mudança de vista.
+  return { quantidade, posicoes, cores, alphas, escalas };
 }

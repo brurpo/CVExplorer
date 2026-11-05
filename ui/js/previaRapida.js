@@ -347,12 +347,17 @@ async function abrirModelo(caminho, ext) {
         aoPreparar: async (contexto) => {
           const nuvem = await splats.carregar(url);
           contexto.definirObjeto(nuvem.objeto);
-          // O tamanho em pixels depende da altura real do buffer (devicePixelRatio incluso).
+          // O tamanho em pixels depende da altura real do buffer (devicePixelRatio incluso)
+          // e a ordem dos splats depende da câmera: as duas coisas são acertadas antes de
+          // cada desenho.
           const tamanho = new THREE.Vector2();
-          contexto.aoRedimensionar(() => {
+          const acertarTela = () => {
             contexto.renderizador.getDrawingBufferSize(tamanho);
-            nuvem.atualizarTela(tamanho.y);
-          });
+            nuvem.atualizarTela(tamanho.x, tamanho.y);
+          };
+          acertarTela();
+          contexto.aoRedimensionar(acertarTela);
+          contexto.aoRenderizar(() => nuvem.atualizarCamera(contexto.camera));
           contexto.aoLimpar(() => nuvem.dispose());
         },
       });
@@ -447,6 +452,8 @@ function iniciarCena({ aoPreparar, semModelo = false }) {
     // ficar nivelado e o modelo nunca aparece invertido.
     camera.up.copy(eixoY).applyQuaternion(orbita.rotacao);
     camera.lookAt(orbita.alvo);
+    camera.updateMatrixWorld();
+    for (const acao of antesDoDesenho) acao();
     renderizador.render(cena, camera);
   };
 
@@ -516,12 +523,14 @@ function iniciarCena({ aoPreparar, semModelo = false }) {
 
   const alvos = [];
   const limpezas = [];
+  const antesDoDesenho = [];
   let ambienteGerado = null;
   let texturaPanorama = null;
 
   const contexto = {
     renderizador,
     canvas,
+    camera,
     definirObjeto(objeto) {
       const grupo = new THREE.Group();
       grupo.add(objeto);
@@ -560,6 +569,10 @@ function iniciarCena({ aoPreparar, semModelo = false }) {
       window.addEventListener('resize', ouvinte);
       limpezas.push(() => window.removeEventListener('resize', ouvinte));
       acao();
+    },
+    /** Gancho antes de cada desenho (splats: reordenar pela câmera). */
+    aoRenderizar(acao) {
+      antesDoDesenho.push(acao);
     },
     aoLimpar(acao) {
       limpezas.push(acao);
