@@ -56,10 +56,27 @@ uma escolha em Configurações, não o contrário.
 > Troque `SEU-USUARIO` em [AppInfo.cs](src/CVExplorer.Host/AppInfo.cs) — ou apenas use o
 > workflow, que injeta a URL real do repositório no build (`-p:RepositorioUrl=...`).
 
+### Criar o repositório e o primeiro push
+
+```powershell
+$env:GITHUB_TOKEN = "ghp_..."      # token com escopo "repo"
+.\scripts\publicar-repo.ps1 -Nome CVExplorer -Visibilidade private
+```
+
+O script consulta a conta autenticada, cria o repositório se ainda não existir, aponta o `origin`,
+faz o push e troca o `RepositorioUrl` padrão do `.csproj` para o repositório real (é de lá que o app
+lê as atualizações). O token não é gravado: vai num credential store temporário que o script apaga.
+
+Sem token, o caminho manual é o de sempre:
+
+```powershell
+git remote add origin https://github.com/SEU-USUARIO/CVExplorer.git
+git push -u origin HEAD
+```
+
 ---
 
 ## Funcionalidades
-
 ### Barra lateral
 
 No estilo do Explorer, sem lista de projetos:

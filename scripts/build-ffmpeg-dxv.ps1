@@ -1,4 +1,4 @@
-<#
+﻿<#
   Compila um ffmpeg com DXV em DXT5 (alpha).
 
   Por que isso existe: o encoder dxv do FFmpeg só implementa DXT1, que não guarda
