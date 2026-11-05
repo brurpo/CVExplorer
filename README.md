@@ -165,7 +165,9 @@ No estilo do Explorer, sem lista de projetos:
   `EDITORIA`, `SAIDA`, `REFERENCIAS`); dentro de uma pasta do modelo são as filhas dela; e dentro de um
   **quadro** são as do token `{QUADRO}`. O que já existe aparece como *"já existe"* e desabilitado,
   então não há duplicata. Sempre há também *Pasta em branco…* e *Novo quadro…* — este último pede o
-  nome e cria a pasta **em qualquer lugar**, já com a estrutura de quadro do modelo dentro.
+  nome e abre a árvore do quadro com **só PROJETOS, SAIDA e ELEMENTOS marcados** (o padrão); o resto
+  (`REFERENCIAS`, subpastas de `PROJETOS`/`ELEMENTOS`…) só nasce se for marcado. Pode ser usado em
+  qualquer pasta, não só dentro de `EDITORIA`.
 - Escalas de Windows são respeitadas: o app é *per monitor v2*, então arraste de coluna, divisória
   e cursor usam as mesmas unidades (px de CSS) em 100%, 150% ou 200%.
 

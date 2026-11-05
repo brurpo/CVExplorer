@@ -469,7 +469,8 @@ public static class Commands
                 return Task.FromResult<object?>(new { ok = false, erro = "Pasta nao encontrada." });
             }
 
-            var resultado = TemplateMaterializer.CreateQuadro(pai, Str(args, "nome"), TemplateCatalog.QuadroNode(host.Template));
+            var resultado = TemplateMaterializer.CreateQuadro(
+                pai, Str(args, "nome"), StrArray(args, "selecionadas"));
             var caminho = Path.Combine(pai, TemplateMaterializer.SanitizeSegment(Str(args, "nome")));
 
             return Task.FromResult<object?>(new

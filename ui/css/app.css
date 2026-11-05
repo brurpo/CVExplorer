@@ -1274,6 +1274,8 @@ body.arrastando .row, body.arrastando .telha { cursor: grabbing; }
   background: var(--bg-elev);
 }
 
+.arvore-alta { max-height: 46vh; }
+
 .arvore-no {
   display: flex;
   align-items: center;

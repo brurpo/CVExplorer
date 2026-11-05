@@ -48,28 +48,8 @@ public static class TemplateCatalog
                     Nome = QuadroToken,
                     Filhos = new List<TemplateNode>
                     {
-                        new()
-                        {
-                            Nome = "ELEMENTOS",
-                            Filhos = new List<TemplateNode>
-                            {
-                                new() { Nome = "AUDIO" },
-                                new() { Nome = "MOV" },
-                                new() { Nome = "SEQUENCIAS" },
-                                new() { Nome = "IMAGENS" },
-                                new() { Nome = "FONTS" },
-                            },
-                        },
-                        new()
-                        {
-                            Nome = "PROJETOS",
-                            Filhos = new List<TemplateNode>
-                            {
-                                new() { Nome = "AE" },
-                                new() { Nome = "PSD" },
-                                new() { Nome = "AI" },
-                            },
-                        },
+                        ElementosPadrao(),
+                        new() { Nome = "PROJETOS", Filhos = ProjetosPadrao(comMaya: true) },
                         new()
                         {
                             Nome = "REFERENCIAS",
@@ -79,6 +59,7 @@ public static class TemplateCatalog
                                 new() { Nome = "IMAGENS" },
                             },
                         },
+                        new() { Nome = "SAIDA" },
                     },
                 },
             },
@@ -91,7 +72,20 @@ public static class TemplateCatalog
         new TemplateNode { Nome = "REFERENCIAS" },
     };
 
-    private static List<TemplateNode> PacotePadrao(bool comMaya, bool comReferencias)
+    private static TemplateNode ElementosPadrao() => new()
+    {
+        Nome = "ELEMENTOS",
+        Filhos = new List<TemplateNode>
+        {
+            new() { Nome = "AUDIO" },
+            new() { Nome = "MOV" },
+            new() { Nome = "SEQUENCIAS" },
+            new() { Nome = "IMAGENS" },
+            new() { Nome = "FONTS" },
+        },
+    };
+
+    private static List<TemplateNode> ProjetosPadrao(bool comMaya)
     {
         var projetos = new List<TemplateNode>
         {
@@ -105,21 +99,15 @@ public static class TemplateCatalog
             projetos.Add(new TemplateNode { Nome = "MAYA" });
         }
 
+        return projetos;
+    }
+
+    private static List<TemplateNode> PacotePadrao(bool comMaya, bool comReferencias)
+    {
         var filhos = new List<TemplateNode>
         {
-            new()
-            {
-                Nome = "ELEMENTOS",
-                Filhos = new List<TemplateNode>
-                {
-                    new() { Nome = "AUDIO" },
-                    new() { Nome = "MOV" },
-                    new() { Nome = "SEQUENCIAS" },
-                    new() { Nome = "IMAGENS" },
-                    new() { Nome = "FONTS" },
-                },
-            },
-            new() { Nome = "PROJETOS", Filhos = projetos },
+            ElementosPadrao(),
+            new() { Nome = "PROJETOS", Filhos = ProjetosPadrao(comMaya) },
         };
 
         if (comReferencias)

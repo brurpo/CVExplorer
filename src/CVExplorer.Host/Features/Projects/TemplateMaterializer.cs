@@ -81,10 +81,11 @@ public static class TemplateMaterializer
     }
 
     /// <summary>
-    /// Cria uma pasta de quadro (ex.: CENA_01) com a estrutura que o modelo define dentro dele.
+    /// Cria uma pasta de quadro (ex.: CENA_01) e, dentro dela, apenas as pastas escolhidas
+    /// pelo usuário (caminhos relativos ao quadro, como "PROJETOS" ou "PROJETOS/AE").
     /// Pode ser em qualquer pasta: o pai não precisa ser a raiz nem o EDITORIA.
     /// </summary>
-    public static MaterializeResult CreateQuadro(string parent, string? name, TemplateNode? quadroNode)
+    public static MaterializeResult CreateQuadro(string parent, string? name, IEnumerable<string>? selecionadas)
     {
         var result = new MaterializeResult();
         var limpo = SanitizeSegment(name);
@@ -94,9 +95,11 @@ public static class TemplateMaterializer
             return result;
         }
 
-        var caminhos = quadroNode is null
-            ? new List<string> { TemplateCatalog.QuadroToken }
-            : TemplateCatalog.Flatten(new List<TemplateNode> { quadroNode });
+        var caminhos = new List<string> { TemplateCatalog.QuadroToken };
+        caminhos.AddRange((selecionadas ?? Array.Empty<string>())
+            .Select(p => (p ?? string.Empty).Replace('\\', '/').Trim('/'))
+            .Where(p => p.Length > 0)
+            .Select(p => $"{TemplateCatalog.QuadroToken}/{p}"));
 
         return Materialize(parent, caminhos, new[] { limpo });
     }

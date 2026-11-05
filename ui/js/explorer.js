@@ -1218,28 +1218,6 @@ async function criarPasta(pai, nome) {
   }
 }
 
-/** Quadro: uma pasta nomeada pelo usuário, já com a estrutura que o modelo define dentro. */
-async function novoQuadro(pai) {
-  if (!pai) return;
-
-  const nome = await dialogs.pedirTexto({
-    titulo: t('menu.novoQuadro'),
-    rotulo: t('quadro.nome'),
-    valor: '',
-    dica: t('quadro.dica'),
-  });
-  if (!nome) return;
-
-  try {
-    const resultado = await call('project.criarQuadro', { caminho: pai, nome });
-    const criadas = resultado?.criadas?.length ?? 0;
-    ui.toast(t('toast.quadroCriado', { nome: fmt.nomearArquivo(resultado?.caminho ?? nome), n: criadas }), 'ok');
-    recarregar();
-  } catch (erro) {
-    ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
-  }
-}
-
 /** Submenu "Novo": pastas do modelo que fazem sentido dentro desta pasta. */
 async function submenuNovo(pasta) {
   const itens = [{ rotulo: t('menu.pastaEmBranco'), acao: () => novaPasta(pasta) }];
@@ -1254,9 +1232,9 @@ async function submenuNovo(pasta) {
     filhos = [];
   }
 
-  // Quadro vale em qualquer pasta: o nome define a pasta e o modelo define o que vai dentro.
+  // Quadro vale em qualquer pasta: o nome define a pasta e o diálogo deixa escolher o que vai dentro.
   if (temQuadro) {
-    itens.push({ rotulo: t('menu.novoQuadro'), acao: () => novoQuadro(pasta) });
+    itens.push({ rotulo: t('menu.novoQuadro'), acao: () => dialogs.novoQuadro(pasta, recarregar) });
   }
 
   if (filhos.length) {

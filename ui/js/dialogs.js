@@ -472,8 +472,113 @@ export async function pastasModelo(caminho, aoConcluir) {
   });
 }
 
-export async function registrarProjeto(caminho) {
-  const nomeSugerido = fmt.nomearArquivo(caminho);
+// ---------- novo quadro ----------
+
+/** Pastas que já vêm marcadas ao criar um quadro. */
+const PASTAS_PADRAO_QUADRO = ['PROJETOS', 'SAIDA', 'ELEMENTOS'];
+
+function acharNo(nos, nome) {
+  for (const no of nos ?? []) {
+    if (String(no.Nome ?? '').toUpperCase() === nome.toUpperCase()) return no;
+    const achado = acharNo(no.Filhos, nome);
+    if (achado) return achado;
+  }
+  return null;
+}
+
+/**
+ * Quadro: pede o nome e mostra, marcado só o essencial (PROJETOS, SAIDA, ELEMENTOS),
+ * o que o modelo prevê para dentro de um quadro. Nada é criado sem estar marcado.
+ */
+export async function novoQuadro(pastaPai, aoCriar) {
+  const modelo = await call('template.get');
+  const noQuadro = acharNo(modelo.arvore, modelo.token);
+
+  const corpo = document.createElement('div');
+  const nome = ui.input({ placeholder: 'Ex.: CENA_01' });
+  corpo.append(ui.campo(t('quadro.nome'), nome, t('quadro.dica')));
+
+  let arvore = null;
+  if (noQuadro?.Filhos?.length) {
+    const padrao = new Set(PASTAS_PADRAO_QUADRO);
+    const marcadas = new Set(noQuadro.Filhos
+      .filter((filho) => padrao.has(String(filho.Nome ?? '').toUpperCase()))
+      .map((filho) => filho.Nome));
+
+    arvore = criarArvore(noQuadro.Filhos, marcadas);
+    // A árvore é o conteúdo principal deste diálogo: usa a altura disponível em vez dos 300px padrão.
+    arvore.elemento.classList.add('arvore-alta');
+
+    const linhaBotoes = document.createElement('div');
+    linhaBotoes.style.display = 'flex';
+    linhaBotoes.style.gap = '8px';
+
+    const marcarTudo = document.createElement('button');
+    marcarTudo.className = 'btn';
+    marcarTudo.textContent = t('modelo.tudo');
+    marcarTudo.addEventListener('click', () => arvore.marcarTodas(true));
+
+    const desmarcar = document.createElement('button');
+    desmarcar.className = 'btn';
+    desmarcar.textContent = t('modelo.nada');
+    desmarcar.addEventListener('click', () => arvore.marcarTodas(false));
+
+    linhaBotoes.append(marcarTudo, desmarcar);
+
+    const bloco = document.createElement('div');
+    bloco.className = 'campo';
+    const rotulo = document.createElement('label');
+    rotulo.textContent = t('quadro.pastas');
+    bloco.append(rotulo, linhaBotoes, arvore.elemento);
+    corpo.append(bloco);
+  }
+
+  const criar = async (fechar) => {
+    if (!nome.value.trim()) {
+      ui.toast(t('quadro.nomeObrigatorio'), 'aviso');
+      nome.focus();
+      return;
+    }
+
+    try {
+      const resultado = await call('project.criarQuadro', {
+        caminho: pastaPai,
+        nome: nome.value.trim(),
+        selecionadas: arvore?.selecionadas() ?? [],
+      });
+
+      const criadas = resultado?.criadas?.length ?? 0;
+      const rotuloQuadro = fmt.nomearArquivo(resultado?.caminho ?? nome.value.trim());
+      ui.toast(
+        criadas
+          ? t('toast.quadroCriado', { nome: rotuloQuadro, n: criadas })
+          : t('toast.quadroCriadoVazio', { nome: rotuloQuadro }),
+        'ok',
+        5000,
+      );
+
+      fechar();
+      aoCriar?.();
+    } catch (erro) {
+      ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
+    }
+  };
+
+  ui.modal({
+    titulo: t('menu.novoQuadro'),
+    descricao: t('quadro.descricao'),
+    corpo,
+    largo: true,
+    botoes: [
+      { texto: t('dialogo.cancelar') },
+      { texto: t('dialogo.criar'), tipo: 'primario', acao: criar },
+    ],
+  });
+
+  setTimeout(() => nome.focus(), 40);
+}
+
+export async function registrarProjeto(caminho) {  const nomeSugerido = fmt.nomearArquivo(caminho);
   const nome = await pedirTexto({ titulo: t('projeto.registrarTitulo'), rotulo: t('projeto.nome'), valor: nomeSugerido });
   if (!nome) return;
 
