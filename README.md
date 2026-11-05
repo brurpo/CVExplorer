@@ -67,9 +67,9 @@ No estilo do Explorer, sem lista de projetos:
 - **Favoritos**: pastas e arquivos que você fixa. Arraste itens da lista para cá (ou use o `+`) e
   remova pelo menu de contexto. Pasta abre na navegação; arquivo abre no app padrão. Ficam em
   `config.json` → `Favoritos`.
-- **Este Computador**: unidades com **letra**, rótulo, espaço livre, **ícone** (disco empilhado para
-  local, globo em azul para rede) e o **tipo** (`Rede` para mapeadas/UNC, `Local` para fixas).
-  Pastas adicionadas em *Raízes* aparecem como pastas.
+- **Este Computador**: unidades com **letra**, rótulo, espaço livre, **ícone** (disco empilhado em
+  **amarelo** para local, globo em azul para rede) e o **tipo** (`Rede` para mapeadas/UNC, `Local`
+  para fixas). Pastas adicionadas em *Raízes* aparecem como pastas.
 - Ícone de pasta em **amarelo**: com o acervo em tons de cinza, a pasta desaparecia no meio das
   miniaturas coloridas.
 
@@ -95,6 +95,14 @@ No estilo do Explorer, sem lista de projetos:
 
 ### Explorador
 - Grade/lista com renderização virtualizada (pastas com milhares de itens continuam fluidas).
+- **Barra de título própria**: a moldura do Windows sai de cena e entra uma faixa fina (30 px) com o
+  logo, o nome do app e minimizar/maximizar/fechar. Arrasta pela faixa, duplo clique maximiza, e as
+  bordas da janela continuam redimensionáveis por `WM_NCHITTEST` — maximizada respeita a barra de
+  tarefas (`WM_GETMINMAXINFO` na área de trabalho do monitor).
+- **Seleção em azul-claro e hover com contorno**: item selecionado usa o acento (`rgba(90,169,230,.26)`
+  + contorno interno), não cinza; o hover clareia o fundo e desenha o mesmo contorno, na grade e na lista.
+- **Seleção por laço**: arraste no vazio para marcar vários itens de uma vez (com `Ctrl` soma à
+  seleção atual). A caixa respeita a área visível e ignora o que está fora dela.
 - **Barra de endereço editável**: clique duplo no caminho (ou `Ctrl+L`) para digitar, colar ou
   copiar um caminho; `Enter` vai para a pasta, `Esc` cancela. Clicar nas migalhas também navega.
 - **Type-ahead**: comece a digitar e a seleção pula para o item que combina (com indicador na tela).
@@ -112,14 +120,18 @@ No estilo do Explorer, sem lista de projetos:
 - Navegação por migalhas, histórico, teclado (`Enter`, `Backspace`, `F2`, `Delete`, setas, `Ctrl+A`).
 - Copiar / recortar / colar, arrastar do Explorer, conflitos com decisão explícita
   (*substituir / manter ambos / pular / cancelar*, com "aplicar a todos").
-- Cópia progressiva com cancelamento; nomes nunca colidem (`arquivo (2).ext`).
+- Cópia progressiva com cancelamento; nomes nunca colidem (`arquivo (2).ext`). O card de progresso
+  desaparece ao terminar — operação encerrada não pode ser "ressuscitada" por um evento atrasado do
+  host (era o que deixava *"Movendo 1 item"* parado em 100%).
 - Exclusão vai para a **Lixeira**.
 - **Pré-visualização lateral sempre no lugar**: o painel abre junto com o app e fica visível (com
   estado vazio) até você recolher — pelo **⟩** do painel ou pelo botão no topo. Nada de abrir/fechar
   sozinho: era isso que roubava largura da grade e fazia o duplo clique acertar outro arquivo
   (a linha se mexia embaixo do cursor). Mostra imagem em tamanho real (PSD, EXR, TIFF, SVG…),
-  player de vídeo e metadados (tamanho, modificado, **criado em**, tipo, caminho). A largura é
-  arrastável (divisória à esquerda; duplo clique volta ao padrão) e o estado é lembrado.
+  player de vídeo (com o quadro centralizado na vertical) e metadados: tamanho, dimensões, duração,
+  bitrate, **codec**, **entrelaçado (sim/não)**, **canal alpha (sim/não)**, modificado, criado em,
+  tipo e caminho. A largura é arrastável (divisória à esquerda; duplo clique volta ao padrão) e o
+  estado é lembrado.
 - **Slider de miniaturas no rodapé**: controla o tamanho das telhas da grade ao vivo (96–340 px),
   e o valor fica salvo em `TamanhoGrade`.
 - **Menu "Novo" nas pastas**: ao clicar com o botão direito numa pasta, o submenu **Novo ▸** lista as
@@ -333,6 +345,20 @@ Botão direito em qualquer quadro de uma sequência (PNG, JPG, TIF, EXR, DPX, TG
 O app também preserva resolução, fps, **timecode**, tags de cor (primárias/transferência/matriz)
 e áudio em PCM 24 bits/48 kHz; VFR (celular/tela) passa sem duplicar quadros. Avisa — sem fingir
 que resolve — quando há **HDR10 estático** ou **Dolby Vision**: esses metadados não existem em ProRes.
+
+### Desentrelaçamento automático
+
+Origem entrelaçada (`field_order` tt/bb/tb/bt no `ffprobe`) é **desentrelaçada na conversão**, sem
+pergunta: quadro entrelaçado em ProRes vira dois campos serrilhados no AE a cada movimento. O
+diálogo avisa qual foi a origem e a cadeia de filtros vai junto com o resto (`-vf` único, combinado
+com o ajuste de dimensão ímpar).
+
+O filtro é escolhido por capacidade, em ordem de qualidade: `nnedi` → `bwdif` → `yadif`
+(`bwdif=mode=send_frame:parity=auto:deint=interlaced` mantém o fps, então 25i vira 25p). Sobre o
+NNEDI especificamente: o filtro do FFmpeg exige o arquivo de pesos `nnedi3_weights.bin`, que é GPL e
+não acompanha nenhum build oficial — nenhum ffmpeg comum tem `nnedi` disponível, então na prática
+o app usa **bwdif**, que é o melhor desentrelaçador nativo (motion-adaptive). Se o seu ffmpeg tiver
+`nnedi` compilado com pesos, ele é preferido automaticamente, sem mudar nada.
 
 > Para economizar mais que o próprio MXF mantendo intra-frame, use **DNxHR LB** no diálogo
 > (ficou em 292 MB, abaixo dos 323 MB do MXF). É 8 bits, então não adicione headroom de cor.

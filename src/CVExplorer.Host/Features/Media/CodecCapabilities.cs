@@ -22,6 +22,7 @@ public static class CodecCapabilities
 
     private static readonly ConcurrentDictionary<string, string?> CacheH264 = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, bool> CacheDxvAlpha = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, string> CacheDesentrelacador = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Melhor encoder H.264 disponível (null quando não há nenhum).</summary>
     public static string? H264(string ffmpeg) => CacheH264.GetOrAdd(ffmpeg, ffmpegCaminho =>
@@ -40,6 +41,25 @@ public static class CodecCapabilities
     {
         var ajuda = Executar(ffmpegCaminho, "-hide_banner", "-h", "encoder=dxv");
         return ajuda.Contains("dxt5", StringComparison.OrdinalIgnoreCase);
+    });
+
+    /// <summary>
+    /// Melhor desentrelaçador que este ffmpeg oferece. O NNEDI3 seria o ideal (borda por
+    /// rede neural), mas o filtro do FFmpeg exige o arquivo de pesos (licença GPL, ~1,6 MB)
+    /// e nenhum build oficial traz isso; então o padrão é bwdif, que é o melhor nativo.
+    /// </summary>
+    public static string Desentrelacador(string ffmpeg) => CacheDesentrelacador.GetOrAdd(ffmpeg, ffmpegCaminho =>
+    {
+        var filtros = Executar(ffmpegCaminho, "-hide_banner", "-filters");
+
+        if (filtros.Contains(" nnedi ", StringComparison.Ordinal))
+        {
+            return "nnedi=deint=interlaced";
+        }
+
+        return filtros.Contains(" bwdif ", StringComparison.Ordinal)
+            ? "bwdif=mode=send_frame:parity=auto:deint=interlaced"
+            : "yadif=deint=interlaced:mode=send_frame";
     });
 
     private static string Executar(string ffmpeg, params string[] argumentos)

@@ -303,10 +303,24 @@ export function menuContexto(x, y, itens) {
 
 const cards = new Map();
 
+// Operação já encerrada: eventos atrasados do host não podem recriar o card
+// (era o que deixava "Movendo 1 item" parado em 100% na tela).
+const concluidas = new Set();
+
 export function progresso({ id, titulo, subtitulo = '' }) {
   const area = document.getElementById('progressos');
   let card = cards.get(id);
   if (card) return card;
+
+  if (concluidas.has(id)) {
+    return {
+      el: document.createElement('div'),
+      aoCancelar: null,
+      atualizar() {},
+      definirTitulo() {},
+      fechar() {},
+    };
+  }
 
   const el = document.createElement('div');
   el.className = 'progresso-card';
@@ -352,6 +366,7 @@ export function progresso({ id, titulo, subtitulo = '' }) {
     },
     definirTitulo(texto) { tituloEl.textContent = texto; },
     fechar(atraso = 260) {
+      concluidas.add(id);
       setTimeout(() => el.remove(), atraso);
       cards.delete(id);
     },

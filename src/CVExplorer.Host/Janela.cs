@@ -22,6 +22,28 @@ public sealed class Janela : Form
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
 
+    [DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    private const int WM_NCCALCSIZE = 0x0083;
+    private const int WM_NCHITTEST = 0x0084;
+    private const int WM_GETMINMAXINFO = 0x0024;
+    private const int WM_NCLBUTTONDOWN = 0x00A1;
+    private const int HTCAPTION = 2;
+    private const int HTCLIENT = 1;
+    private const int HTLEFT = 10;
+    private const int HTRIGHT = 11;
+    private const int HTTOP = 12;
+    private const int HTTOPLEFT = 13;
+    private const int HTTOPRIGHT = 14;
+    private const int HTBOTTOM = 15;
+    private const int HTBOTTOMLEFT = 16;
+    private const int HTBOTTOMRIGHT = 17;
+    private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+
     public Janela(AppHost host, bool primaria, string? caminhoInicial)
     {
         _host = host;
@@ -33,6 +55,10 @@ public sealed class Janela : Form
         BackColor = Color.FromArgb(14, 15, 17);
         StartPosition = FormStartPosition.Manual;
         DoubleBuffered = true;
+        // Barra de titulo propria (HTML): a do Windows sai de cena e a altura util
+        // comeca no logo, com o mesmo desenho escuro do resto do app.
+        FormBorderStyle = FormBorderStyle.None;
+        Padding = new Padding(1);
 
         if (primaria)
         {
@@ -153,6 +179,155 @@ public sealed class Janela : Form
     {
         base.OnHandleCreated(e);
         AplicarBarraTituloEscura();
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MINMAXINFO
+    {
+        public POINT ptReserved;
+        public POINT ptMaxSize;
+        public POINT ptMaxPosition;
+        public POINT ptMinTrackSize;
+        public POINT ptMaxTrackSize;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MONITORINFO
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public int dwFlags;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, int flags);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
+
+    private const int MONITOR_DEFAULTTONEAREST = 2;
+
+    protected override void WndProc(ref Message m)
+    {
+        switch (m.Msg)
+        {
+            // Sem área não-cliente: a janela não tem mais borda cinza nem barra nativa.
+            case WM_NCCALCSIZE when m.WParam != IntPtr.Zero:
+                m.Result = IntPtr.Zero;
+                return;
+
+            // Maximizada não pode cobrir a barra de tarefas (área de trabalho do monitor).
+            case WM_GETMINMAXINFO:
+            {
+                var monitor = MonitorFromWindow(Handle, MONITOR_DEFAULTTONEAREST);
+                var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+
+                if (GetMonitorInfo(monitor, ref info))
+                {
+                    var mmi = Marshal.PtrToStructure<MINMAXINFO>(m.LParam);
+                    mmi.ptMaxPosition.X = info.rcWork.Left - info.rcMonitor.Left;
+                    mmi.ptMaxPosition.Y = info.rcWork.Top - info.rcMonitor.Top;
+                    mmi.ptMaxSize.X = info.rcWork.Right - info.rcWork.Left;
+                    mmi.ptMaxSize.Y = info.rcWork.Bottom - info.rcWork.Top;
+                    Marshal.StructureToPtr(mmi, m.LParam, false);
+                    m.Result = IntPtr.Zero;
+                    return;
+                }
+
+                break;
+            }
+
+            // Bordas de redimensionamento, já que a moldura nativa não existe mais.
+            case WM_NCHITTEST:
+            {
+                base.WndProc(ref m);
+                var tela = new Point((short)(m.LParam.ToInt64() & 0xFFFF), (short)((m.LParam.ToInt64() >> 16) & 0xFFFF));
+                var cliente = PointToClient(tela);
+                var borda = (int)Math.Round(5 * DeviceDpi / 96.0);
+                var esquerda = cliente.X <= borda;
+                var direita = cliente.X >= ClientSize.Width - borda;
+                var topo = cliente.Y <= borda;
+                var fundo = cliente.Y >= ClientSize.Height - borda;
+
+                if (WindowState == FormWindowState.Maximized)
+                {
+                    m.Result = (IntPtr)HTCLIENT;
+                    return;
+                }
+
+                m.Result = (IntPtr)((topo, fundo, esquerda, direita) switch
+                {
+                    (true, _, true, _) => HTTOPLEFT,
+                    (true, _, _, true) => HTTOPRIGHT,
+                    (_, true, true, _) => HTBOTTOMLEFT,
+                    (_, true, _, true) => HTBOTTOMRIGHT,
+                    (true, _, _, _) => HTTOP,
+                    (_, true, _, _) => HTBOTTOM,
+                    (_, _, true, _) => HTLEFT,
+                    (_, _, _, true) => HTRIGHT,
+                    _ => HTCLIENT,
+                });
+                return;
+            }
+        }
+
+        base.WndProc(ref m);
+    }
+
+    /// <summary>Arrasta a janela pela barra de título feita em HTML.</summary>
+    public void ArrastarJanela()
+    {
+        if (WindowState == FormWindowState.Maximized)
+        {
+            // Sai do maximizado mantendo o cursor sob o ponto agarrado.
+            var cursor = Cursor.Position;
+            var proporcao = ClientSize.Width > 0 ? (double)cursor.X / Bounds.Width : 0.5;
+            WindowState = FormWindowState.Normal;
+
+            var largura = RestoreBounds.Width;
+            Bounds = new Rectangle(
+                cursor.X - (int)(largura * proporcao),
+                cursor.Y - (int)(24 * DeviceDpi / 96.0),
+                largura,
+                RestoreBounds.Height);
+        }
+
+        ReleaseCapture();
+
+        // O loop de arraste do Windows bloqueia ate soltar: sai da thread do IPC primeiro.
+        BeginInvoke(() =>
+        {
+            SendMessage(Handle, WM_NCLBUTTONDOWN, (IntPtr)HTCAPTION, IntPtr.Zero);
+            Emitir("janela.estado", new { maximizada = WindowState == FormWindowState.Maximized });
+        });
+    }
+
+    public void MinimizarJanela() => WindowState = FormWindowState.Minimized;
+
+    public void AlternarMaximizado()
+    {
+        WindowState = WindowState == FormWindowState.Maximized
+            ? FormWindowState.Normal
+            : FormWindowState.Maximized;
+
+        Emitir("janela.estado", new { maximizada = WindowState == FormWindowState.Maximized });
     }
 
     private async Task IniciarAsync()
@@ -320,6 +495,10 @@ public sealed class Janela : Form
         {
             var ativo = 1;
             DwmSetWindowAttribute(Handle, 20, ref ativo, sizeof(int));
+
+            // Cantos arredondados do Windows 11 também em janela sem moldura.
+            var arredondado = 2;
+            DwmSetWindowAttribute(Handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref arredondado, sizeof(int));
         }
         catch
         {

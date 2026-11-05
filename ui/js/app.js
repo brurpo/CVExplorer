@@ -48,6 +48,53 @@ async function iniciar() {
     });
   });
 
+  // ---- barra de título própria ----
+  const idJanela = info?.janela ?? null;
+
+  const janelaAcao = (acao, extra = {}) =>
+    call(`app.janela${acao}`, { janela: idJanela, ...extra }).catch(() => {});
+
+  document.getElementById('btn-janela-min').addEventListener('click', (e) => {
+    e.stopPropagation();
+    janelaAcao('Minimizar');
+  });
+
+  const btnMax = document.getElementById('btn-janela-max');
+  const definirMaximizada = (maximizada) => {
+    document.body.classList.toggle('janela-maximizada', Boolean(maximizada));
+    btnMax.title = maximizada ? t('janela.restaurar') : t('janela.maximizar');
+    btnMax.innerHTML = maximizada
+      ? '<svg viewBox="0 0 12 12"><rect x="2" y="4" width="6" height="6" rx="1"/><path d="M4.5 4V2.5h5.5v5.5H8"/></svg>'
+      : '<svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1"/></svg>';
+  };
+
+  btnMax.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    try {
+      const r = await call('app.janelaMaximizar', { janela: idJanela });
+      definirMaximizada(r?.maximizada);
+    } catch {
+      // sem host: ignora
+    }
+  });
+
+  document.getElementById('btn-janela-fechar').addEventListener('click', (e) => {
+    e.stopPropagation();
+    janelaAcao('Fechar');
+  });
+
+  const barra = document.getElementById('titlebar');
+  barra.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('button')) return;
+    janelaAcao('Arrastar');
+  });
+  barra.addEventListener('dblclick', (e) => {
+    if (e.target.closest('button')) return;
+    btnMax.click();
+  });
+
+  on('janela.estado', (dados) => definirMaximizada(dados?.maximizada));
+
   document.addEventListener('recarregar', () => explorer.recarregar());
   document.addEventListener('navegar', (evento) => explorer.navegar(evento.detail));
 

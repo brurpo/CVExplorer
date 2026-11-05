@@ -52,6 +52,38 @@ public static class Commands
 
         Add("settings.get", (_, _) => Task.FromResult<object?>(host.Settings));
 
+        // ---------- barra de titulo propria ----------
+
+        Add("app.janelaMinimizar", (args, _) =>
+        {
+            JanelaDoContexto(host, args)?.MinimizarJanela();
+            return Task.FromResult<object?>(new { ok = true });
+        });
+
+        Add("app.janelaMaximizar", (args, _) =>
+        {
+            var janela = JanelaDoContexto(host, args);
+            janela?.AlternarMaximizado();
+            return Task.FromResult<object?>(new
+            {
+                ok = janela is not null,
+                maximizada = janela?.WindowState == FormWindowState.Maximized,
+            });
+        });
+
+        Add("app.janelaFechar", (args, _) =>
+        {
+            var janela = JanelaDoContexto(host, args);
+            janela?.BeginInvoke(janela.Close);
+            return Task.FromResult<object?>(new { ok = true });
+        });
+
+        Add("app.janelaArrastar", (args, _) =>
+        {
+            JanelaDoContexto(host, args)?.ArrastarJanela();
+            return Task.FromResult<object?>(new { ok = true });
+        });
+
         Add("settings.save", (args, _) =>
         {
             var incoming = args.Deserialize<AppSettings>(Json.Options) ?? new AppSettings();
@@ -568,6 +600,8 @@ public static class Commands
                     info.Vfr,
                     info.DezBits,
                     info.BitrateVideoMbps,
+                    info.Interlaced,
+                    info.FieldOrder,
                     duracaoTexto = TimeSpan.FromSeconds(info.DuracaoSegundos).ToString(@"hh\:mm\:ss"),
                 },
                 plano = new
@@ -576,6 +610,7 @@ public static class Commands
                     plano.NomeExibicao,
                     plano.PixFmt,
                     plano.ComAlpha,
+                    plano.Desentrelacar,
                     plano.OrigemMbps,
                     plano.AlvoMbps,
                     plano.Motivo,
@@ -959,8 +994,23 @@ public static class Commands
         return roots;
     }
 
-    private static string Str(JsonElement args, string name, string def = "")
+    /// <summary>Janela que fez a chamada (o id vem da interface; sem ele, a janela ativa).</summary>
+    private static Janela? JanelaDoContexto(AppHost host, JsonElement args)
     {
+        var id = Str(args, "janela");
+        if (!string.IsNullOrEmpty(id))
+        {
+            var porId = host.Janelas.FirstOrDefault(j => !j.IsDisposed && j.Id == id);
+            if (porId is not null)
+            {
+                return porId;
+            }
+        }
+
+        return host.JanelaDoContexto ?? host.JanelaAtiva;
+    }
+
+    private static string Str(JsonElement args, string name, string def = "")    {
         if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty(name, out var el))
         {
             return def;

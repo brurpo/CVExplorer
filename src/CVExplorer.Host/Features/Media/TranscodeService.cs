@@ -151,6 +151,12 @@ public sealed class TranscodeService
             };
         }
 
+        // Desentrelaçar com o melhor filtro disponível (nnedi > bwdif > yadif).
+        if (plan.Desentrelacar)
+        {
+            plan.FiltroDesentrelace = CodecCapabilities.Desentrelacador(ffmpeg);
+        }
+
         var psi = new ProcessStartInfo(ffmpeg)
         {
             RedirectStandardOutput = true,

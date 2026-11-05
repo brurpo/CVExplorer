@@ -55,11 +55,24 @@ public static class FfmpegCommandBuilder
             args.Add("0:a?");
         }
 
-        // Ajuste de dimensao impar: o ffmpeg cortaria silenciosamente para par.
+        // Filtros de imagem: dimensão ímpar (o ffmpeg cortaria para par) e desentrelaçamento.
+        // Ficam numa cadeia única porque só pode existir um -vf.
+        var filtros = new List<string>();
+
         if (info.Largura % 2 != 0 || info.Altura % 2 != 0)
         {
+            filtros.Add("scale=trunc(iw/2)*2:trunc(ih/2)*2");
+        }
+
+        if (plan.Desentrelacar)
+        {
+            filtros.Add(plan.FiltroDesentrelace);
+        }
+
+        if (filtros.Count > 0)
+        {
             args.Add("-vf");
-            args.Add("scale=trunc(iw/2)*2:trunc(ih/2)*2");
+            args.Add(string.Join(",", filtros));
         }
 
         args.Add("-c:v");

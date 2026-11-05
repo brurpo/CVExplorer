@@ -350,6 +350,16 @@ async function preencherMeta(item, caminho, ext) {
       if (info?.info) {
         linhas.splice(1, 0, [t('preview.dimensoes'), `${info.info.Largura} × ${info.info.Altura}`]);
         linhas.splice(2, 0, [t('preview.duracao'), fmt.duracao(info.info.DuracaoSegundos)]);
+
+        // Codec e o que ele carrega: é o que decide se dá para editar direto.
+        const codec = [String(info.info.Codec ?? '').toUpperCase(), info.info.PixFmt]
+          .filter(Boolean).join(' · ');
+        if (codec) {
+          linhas.push([t('preview.codec'), codec]);
+        }
+        linhas.push([t('preview.entrelacado'), info.info.Interlaced ? t('preview.sim') : t('preview.nao')]);
+        linhas.push([t('preview.alpha'), info.info.TemAlpha ? t('preview.sim') : t('preview.nao')]);
+
         if (info.info.BitrateVideoMbps) {
           linhas.splice(3, 0, [t('preview.bitrate'), `${Number(info.info.BitrateVideoMbps).toFixed(0)} Mbps`]);
         }

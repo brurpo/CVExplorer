@@ -31,6 +31,12 @@ public sealed class VideoPlan
     /// <summary>Por que este perfil foi escolhido (mostrado na interface).</summary>
     public string? Motivo { get; set; }
 
+    /// <summary>Desentrelaçar na conversão (origem entrelaçada).</summary>
+    public bool Desentrelacar { get; set; }
+
+    /// <summary>Filtro de desentrelaçamento; o host escolhe o melhor que o ffmpeg oferece.</summary>
+    public string FiltroDesentrelace { get; set; } = "bwdif=mode=send_frame:parity=auto:deint=interlaced";
+
     public List<string> Avisos { get; } = new();
 }
 
@@ -133,6 +139,7 @@ public static class VideoPlanBuilder
             Audio = perfil.Audio,
             OrigemMbps = info.BitrateVideoMbps,
             AlvoMbps = Alvo(perfil, info),
+            Desentrelacar = info.Interlaced,
         };
 
         // Alpha nao existe em 4:2:2. Perfil de EDICAO nunca desiste do alpha: sobe para 4444.
@@ -322,6 +329,13 @@ public static class VideoPlanBuilder
         if (info.Vfr)
         {
             plano.Avisos.Add("Taxa de quadros variavel: preservada sem duplicar/descartar quadros.");
+        }
+
+        if (plano.Desentrelacar)
+        {
+            plano.Avisos.Add(
+                $"Origem entrelaçada ({info.FieldOrder}): a conversão desentrelaça, "
+                + "senão cada quadro vira dois campos serrilhados no AE.");
         }
     }
 

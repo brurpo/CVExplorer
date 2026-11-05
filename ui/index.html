@@ -8,12 +8,24 @@
   <link rel="stylesheet" href="./css/app.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand" title="CV Explorer">
-      <span class="brand-mark">CV</span>
-      <span class="brand-name">Explorer</span>
+  <header class="titlebar" id="titlebar">
+    <img class="titlebar-logo" src="./img/logo.png" alt="" draggable="false" />
+    <span class="titlebar-titulo">CV Explorer</span>
+    <div class="titlebar-arraste" id="titlebar-arraste"></div>
+    <div class="janela-botoes">
+      <button id="btn-janela-min" class="janela-btn" data-i18n-title="janela.minimizar">
+        <svg viewBox="0 0 12 12"><path d="M2.5 6h7" /></svg>
+      </button>
+      <button id="btn-janela-max" class="janela-btn" data-i18n-title="janela.maximizar">
+        <svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1" /></svg>
+      </button>
+      <button id="btn-janela-fechar" class="janela-btn fechar" data-i18n-title="janela.fechar">
+        <svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" /></svg>
+      </button>
     </div>
+  </header>
 
+  <header class="topbar">
     <button id="chip-projeto" class="chip-projeto" data-i18n-title="projeto.foraDeProjeto">
       <span class="chip-dot"></span>
       <span id="chip-projeto-nome">Sem projeto</span>

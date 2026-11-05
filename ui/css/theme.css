@@ -19,6 +19,9 @@
   --accent-dim: rgba(90, 169, 230, 0.14);
   --accent-dim-2: rgba(90, 169, 230, 0.24);
 
+  /* amarelo das pastas e das unidades locais */
+  --pasta: #f2c95c;
+
   --danger: #e5484d;
   --danger-dim: rgba(229, 72, 77, 0.14);
   --warning: #f5a524;
@@ -57,7 +60,8 @@ body {
   display: grid;
   /* Sem coluna explicita, o grid usa max-content e a interface estoura a janela. */
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 52px minmax(0, 1fr) 26px;
+  /* barra de título própria (30) + toolbar (52) + conteúdo (1fr) + rodapé (26) */
+  grid-template-rows: 30px 52px minmax(0, 1fr) 26px;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);

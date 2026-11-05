@@ -1,4 +1,4 @@
-﻿import { call, on } from './bridge.js';
+import { call, on } from './bridge.js';
 import { t } from './i18n.js';
 import * as fmt from './format.js';
 import * as ui from './ui.js';
@@ -113,7 +113,7 @@ export function iniciarExplorer() {
   on('os.drop', async (dados) => {
     if (!dados?.caminhos?.length) return;
 
-    // Solto do Explorer em cima dos Favoritos: vira favorito, nÃ£o cola arquivo.
+    // Solto do Explorer em cima dos Favoritos: vira favorito, não cola arquivo.
     if (Number.isFinite(dados.x) && Number.isFinite(dados.y)) {
       const escala = window.devicePixelRatio || 1;
       if (lateral.alvoFavoritos(dados.x / escala, dados.y / escala)) {
@@ -146,6 +146,7 @@ export function iniciarExplorer() {
   });
 
   iniciarArrasteExterno();
+  iniciarLacoSelecao();
 
   on('op.progress', (dados) => {
     const card = ui.progresso({
@@ -287,7 +288,7 @@ function mostrarAlvoArraste(dados) {
   overlay.querySelector('.arraste-pasta').textContent = dados.pasta ?? '';
 }
 
-// ---------- navegaÃ§Ã£o ----------
+// ---------- navegação ----------
 
 export async function navegar(caminho, { historico = true } = {}) {
   if (!caminho) return;
@@ -399,14 +400,14 @@ function desenharMigalhas(partes, compacto) {
     if (indice > 0) {
       const sep = document.createElement('span');
       sep.className = 'migalha-sep';
-      sep.textContent = 'â€º';
+      sep.textContent = '›';
       migalhas.appendChild(sep);
     }
 
     if (parte === null) {
       const reticencias = document.createElement('button');
       reticencias.className = 'migalha';
-      reticencias.textContent = 'â€¦';
+      reticencias.textContent = '…';
       reticencias.title = t('endereco.editar');
       reticencias.addEventListener('click', entrarEdicaoEndereco);
       migalhas.appendChild(reticencias);
@@ -450,7 +451,7 @@ function partesDeCaminho(caminho) {
   return partes;
 }
 
-// ---------- renderizaÃ§Ã£o ----------
+// ---------- renderização ----------
 
 function desenhar() {
   if (agendado) return;
@@ -542,12 +543,12 @@ function atualizarSetasOrdenacao() {
     celula.classList.toggle('ordenado', ativo);
     const seta = celula.querySelector('.seta');
     if (seta) {
-      seta.textContent = ativo ? (state.ordenacao.desc ? 'â–¼' : 'â–²') : '';
+      seta.textContent = ativo ? (state.ordenacao.desc ? '▼' : '▲') : '';
     }
   }
 }
 
-// ---------- colunas redimensionÃ¡veis ----------
+// ---------- colunas redimensionáveis ----------
 
 const COLUNAS = {
   nome: { min: 120, max: 2400, padrao: 340, variavel: '--w-nome' },
@@ -805,7 +806,7 @@ function criarTelha(item, coluna, linha, largura, altura, alturaLinha) {
         const img = document.createElement('img');
         img.src = url;
         img.alt = '';
-        // Troca sÃ³ o Ã­cone: replaceChildren apagaria o selo de formato.
+        // Troca só o ícone: replaceChildren apagaria o selo de formato.
         thumb.replaceChild(img, iconeEl);
       });
     }
@@ -814,7 +815,7 @@ function criarTelha(item, coluna, linha, largura, altura, alturaLinha) {
   if (!ehPasta) {
     const badge = document.createElement('span');
     badge.className = 'tile-badge';
-    badge.textContent = ext || 'â€¢';
+    badge.textContent = ext || '•';
     thumb.appendChild(badge);
   }
 
@@ -933,9 +934,82 @@ function atualizarStatus() {  const itens = itensAtuais();
   }
 }
 
-// ---------- seleÃ§Ã£o ----------
+// ---------- seleção ----------
+
+// ---------- seleção por laço (arrastar no vazio) ----------
+
+let lacoAtivo = false;
+
+function iniciarLacoSelecao() {
+  area.addEventListener('pointerdown', (evento) => {
+    if (evento.button !== 0) return;
+    if (evento.target.closest('[data-caminho], button, input, .alca')) return;
+
+    const inicio = { x: evento.clientX, y: evento.clientY };
+    const base = evento.ctrlKey || evento.metaKey ? new Set(state.selecao) : new Set();
+    let mexeu = false;
+
+    const caixa = document.createElement('div');
+    caixa.className = 'laco-selecao';
+    caixa.hidden = true;
+    area.appendChild(caixa);
+
+    const areaRect = () => area.getBoundingClientRect();
+
+    const mover = (e) => {
+      if (!mexeu) {
+        if (Math.abs(e.clientX - inicio.x) < 4 && Math.abs(e.clientY - inicio.y) < 4) return;
+        mexeu = true;
+        lacoAtivo = true;
+        caixa.hidden = false;
+      }
+
+      const limite = areaRect();
+      const x1 = Math.max(limite.left, Math.min(inicio.x, e.clientX));
+      const y1 = Math.max(limite.top, Math.min(inicio.y, e.clientY));
+      const x2 = Math.min(limite.right, Math.max(inicio.x, e.clientX));
+      const y2 = Math.min(limite.bottom, Math.max(inicio.y, e.clientY));
+
+      caixa.style.left = `${x1 - limite.left}px`;
+      caixa.style.top = `${y1 - limite.top + area.scrollTop}px`;
+      caixa.style.width = `${Math.max(0, x2 - x1)}px`;
+      caixa.style.height = `${Math.max(0, y2 - y1)}px`;
+
+      const novos = new Set(base);
+      for (const el of area.querySelectorAll('[data-caminho]')) {
+        const r = el.getBoundingClientRect();
+        const cruza = r.left < x2 && r.right > x1 && r.top < y2 && r.bottom > y1;
+        if (cruza) novos.add(el.dataset.caminho);
+      }
+
+      state.selecao = novos;
+      aplicarSelecao();
+    };
+
+    const soltar = () => {
+      window.removeEventListener('pointermove', mover);
+      window.removeEventListener('pointerup', soltar);
+      window.removeEventListener('pointercancel', soltar);
+      caixa.remove();
+
+      if (mexeu) {
+        // Evita que o clique seguinte (no vazio) limpe o que acabou de ser selecionado.
+        setTimeout(() => { lacoAtivo = false; }, 0);
+        preview.mostrar(selecionados()).catch(() => {});
+      } else {
+        lacoAtivo = false;
+      }
+    };
+
+    window.addEventListener('pointermove', mover);
+    window.addEventListener('pointerup', soltar);
+    window.addEventListener('pointercancel', soltar);
+  });
+}
 
 function aoClicar(evento) {
+  if (lacoAtivo) return;
+
   const alvo = evento.target.closest('[data-caminho]');
 
   if (!alvo) {
@@ -998,8 +1072,8 @@ function abrir(item) {
 
 // ---------- menu de contexto ----------
 
-// SequÃªncias sÃ£o detectadas no host; guardamos o resultado por caminho para o menu
-// jÃ¡ mostrar a contagem de quadros sem esperar o clique.
+// Sequências são detectadas no host; guardamos o resultado por caminho para o menu
+// já mostrar a contagem de quadros sem esperar o clique.
 const sequencias = new Map();
 
 function prefetchSequencia(lista) {
@@ -1020,7 +1094,7 @@ function itensConverterPara(primeiro) {
     ...grupo.itens.map((preset) => {
       const indisponivel = dialogs.presetIndisponivel(preset.chave);
       return {
-        rotulo: indisponivel ? `${preset.rotulo} â€” ${t('menu.indisponivelCurto')}` : preset.rotulo,
+        rotulo: indisponivel ? `${preset.rotulo} — ${t('menu.indisponivelCurto')}` : preset.rotulo,
         dica: indisponivel ? t('menu.indisponivelMotivo') : '',
         desabilitado: indisponivel,
         acao: () => dialogs.converterVideo(primeiro, state.config, preset.chave),
@@ -1120,13 +1194,13 @@ function criado(caminho) {
   if (caminho) navegar(caminho);
 }
 
-// ---------- aÃ§Ãµes ----------
+// ---------- ações ----------
 
 async function novaPasta(pai = state.caminho) {
   if (!pai) return;
   const nome = await dialogs.pedirTexto({
     titulo: t('menu.novaPasta'),
-    rotulo: t('projeto.nome'),
+    rotulo: t('pasta.nome'),
     valor: '',
   });
   if (!nome) return;
@@ -1275,7 +1349,7 @@ async function colarCaminhos(caminhos, recortarItens) {
       call('settings.save', state.config).catch(() => {});
     }
 
-    // "Colar original": o arquivo entra como estÃ¡, sem reencode.
+    // "Colar original": o arquivo entra como está, sem reencode.
     converter = escolha.acao === 'converter';
   }
 
@@ -1384,7 +1458,7 @@ function sairDaBusca({ silencioso = false } = {}) {
   }
 }
 
-// ---------- visualizaÃ§Ã£o ----------
+// ---------- visualização ----------
 
 function alternarVisao() {
   state.visao = state.visao === 'grade' ? 'lista' : 'grade';
@@ -1507,7 +1581,7 @@ export function focoBusca() {
   buscaInput.select();
 }
 
-// ---------- barra de endereÃ§o editÃ¡vel ----------
+// ---------- barra de endereço editável ----------
 
 function iniciarEndereco() {
   areaEndereco.addEventListener('dblclick', (evento) => {
@@ -1566,7 +1640,7 @@ async function irParaEndereco() {
   }
 }
 
-// ---------- digitaÃ§Ã£o rÃ¡pida (type-ahead) ----------
+// ---------- digitação rápida (type-ahead) ----------
 
 function normalizarTexto(texto) {
   return (texto ?? '')
@@ -1588,7 +1662,7 @@ function tratarDigitacao(caractere) {
 
   const prefixo = normalizarTexto(bufferDigitacao);
   const atual = state.ancora ?? -1;
-  // Primeira letra: avanÃ§a para a prÃ³xima combinaÃ§Ã£o. Refinando: mantÃ©m a atual.
+  // Primeira letra: avança para a próxima combinação. Refinando: mantém a atual.
   const inicio = atual < 0 ? 0 : (novaSessao ? atual + 1 : atual);
 
   for (let passo = 0; passo < itens.length; passo++) {

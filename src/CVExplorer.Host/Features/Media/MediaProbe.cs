@@ -56,6 +56,15 @@ public sealed class MediaInfo
     /// <summary>Frames com taxas irregulares (celular, captura de tela).</summary>
     public bool Vfr { get; set; }
 
+    /// <summary>
+    /// Vídeo entrelaçado (field_order tt/bb/tb/bt). A conversão desentrelaça sozinha:
+    /// quadro entrelaçado em ProRes vira "serrilhado" no AE a cada movimento.
+    /// </summary>
+    public bool Interlaced { get; set; }
+
+    /// <summary>Ordem dos campos, quando entrelaçado (tt, bb, tb, bt).</summary>
+    public string? FieldOrder { get; set; }
+
     public bool DolbyVision { get; set; }
 
     public bool Hdr => Transferencia is "smpte2084" or "arib-std-b67";
@@ -173,6 +182,9 @@ public sealed class MediaProbe
 
             info.BitrateVideoMbps = ParseMbps(GetString(video.Value, "bit_rate"));
             info.BitsPorAmostra = GetInt(video.Value, "bits_per_raw_sample");
+
+            info.FieldOrder = GetString(video.Value, "field_order");
+            info.Interlaced = info.FieldOrder is "tt" or "bb" or "tb" or "bt";
 
             info.Fps = ParseRate(GetString(video.Value, "avg_frame_rate"));
             var rFps = ParseRate(GetString(video.Value, "r_frame_rate"));

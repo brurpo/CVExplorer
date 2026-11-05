@@ -1,3 +1,63 @@
+/* ---------- barra de título própria ---------- */
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding-left: 10px;
+  background: #101113;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.titlebar-logo {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.titlebar-titulo {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: 0.2px;
+  pointer-events: none;
+}
+
+.titlebar-arraste {
+  flex: 1;
+  height: 100%;
+  cursor: default;
+}
+
+.janela-botoes { display: flex; height: 100%; }
+
+.janela-btn {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 100%;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: default;
+  transition: background var(--dur), color var(--dur);
+}
+
+.janela-btn svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+
+.janela-btn:hover { background: var(--surface-2); color: var(--text); }
+.janela-btn.fechar:hover { background: #c43438; color: #fff; }
+
 /* ---------- barra superior ---------- */
 .topbar {
   display: flex;
@@ -329,7 +389,7 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
 
 .side-icone { display: grid; place-items: center; flex: 0 0 auto; }
 .side-icone svg { width: 16px; height: 16px; }
-.side-icone.unidade svg { width: 15px; height: 15px; color: var(--muted); }
+.side-icone.unidade svg { width: 15px; height: 15px; color: var(--pasta); }
 .side-icone.unidade[data-tipo="rede"] svg { color: var(--accent); }
 .side-icone .icone-tipo { width: 17px; height: 17px; object-fit: contain; }
 .side-icone[data-cat="pasta"] .icone-tipo {
@@ -396,8 +456,19 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
   transition: background var(--dur), border-color var(--dur);
 }
 
-.tile:hover { background: var(--surface); border-color: var(--border); }
-.tile.selecionado { background: var(--accent-dim); border-color: rgba(90, 169, 230, 0.45); }
+.tile:hover {
+  background: var(--surface-2);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.tile.selecionado {
+  background: rgba(90, 169, 230, 0.26);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.tile.selecionado:hover { background: rgba(90, 169, 230, 0.34); }
 
 .tile-thumb {
   position: relative;
@@ -420,20 +491,26 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
 .tile-icone { color: var(--text-2); }
 
 /* Ícone e selo acompanham o tamanho da telha: em telas grandes/escala 150%
-   o 34px fixo ficava minúsculo no meio do quadro. */
+   o 34px fixo ficava minúsculo no meio do quadro.
+   Sem miniatura, o ícone preenche o quadrado — é o "vazio" que dá o volume. */
 .tile-icone .icone-tipo {
-  width: clamp(44px, calc(var(--lado-telha, 168px) * 0.44), 116px);
-  height: clamp(44px, calc(var(--lado-telha, 168px) * 0.44), 116px);
+  width: clamp(56px, calc(var(--lado-telha, 168px) * 0.74), 190px);
+  height: clamp(56px, calc(var(--lado-telha, 168px) * 0.74), 190px);
   object-fit: contain;
-  filter: saturate(0.85);
-  opacity: 0.92;
+  filter: saturate(0.9);
+  opacity: 0.95;
 }
 
-.tile.selecionado .tile-icone .icone-tipo { opacity: 1; filter: none; }
+.tile.selecionado .tile-icone .icone-tipo { opacity: 1; filter: saturate(1); }
+
+/* Selecionada, a pasta continua amarela: o "sem filtro" acima tiraria a cor. */
+.tile.selecionado .tile-icone[data-cat="pasta"] .icone-tipo {
+  filter: sepia(1) saturate(3.2) hue-rotate(4deg) brightness(1.2);
+}
 
 .tile-icone[data-cat="pasta"] .icone-tipo {
-  width: clamp(50px, calc(var(--lado-telha, 168px) * 0.5), 128px);
-  height: clamp(50px, calc(var(--lado-telha, 168px) * 0.5), 128px);
+  width: clamp(64px, calc(var(--lado-telha, 168px) * 0.8), 205px);
+  height: clamp(64px, calc(var(--lado-telha, 168px) * 0.8), 205px);
 }
 
 /* Pasta em amarelo: o acervo é cinza e, no meio de miniaturas coloridas,
@@ -445,15 +522,15 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
 }
 
 .tile-icone svg {
-  width: clamp(44px, calc(var(--lado-telha, 168px) * 0.48), 112px);
-  height: clamp(44px, calc(var(--lado-telha, 168px) * 0.48), 112px);
-  stroke-width: 1.5;
+  width: clamp(56px, calc(var(--lado-telha, 168px) * 0.72), 180px);
+  height: clamp(56px, calc(var(--lado-telha, 168px) * 0.72), 180px);
+  stroke-width: 1.2;
   fill: none;
 }
 
 .tile-icone[data-cat="pasta"] svg {
-  width: clamp(46px, calc(var(--lado-telha, 168px) * 0.46), 118px);
-  height: clamp(46px, calc(var(--lado-telha, 168px) * 0.46), 118px);
+  width: clamp(64px, calc(var(--lado-telha, 168px) * 0.78), 196px);
+  height: clamp(64px, calc(var(--lado-telha, 168px) * 0.78), 196px);
 }
 
 .tile-nome {
@@ -508,8 +585,18 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
   transition: background var(--dur);
 }
 
-.row:hover { background: var(--surface); }
-.row.selecionado { background: var(--accent-dim); color: var(--text); }
+.row:hover {
+  background: var(--surface-2);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.row.selecionado {
+  background: rgba(90, 169, 230, 0.26);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+  color: var(--text);
+}
+
+.row.selecionado:hover { background: rgba(90, 169, 230, 0.34); }
 
 .row-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-icone { display: grid; place-items: center; color: var(--muted); }
@@ -817,13 +904,17 @@ body.arrastando .row, body.arrastando .telha { cursor: grabbing; }
 
 .preview-corpo .placeholder { color: var(--muted-2); font-size: 12px; }
 
-/* com vídeo: o player encosta no topo e ocupa a largura toda */
+/* com vídeo: o player ocupa a largura toda e centraliza o quadro na vertical */
 .preview-corpo.com-player {
-  place-items: start stretch;
+  place-items: center stretch;
   padding: 0;
 }
 
-.preview-corpo.com-player .player { height: 100%; }
+.preview-corpo.com-player .player {
+  height: 100%;
+  justify-content: center;
+}
+
 .preview-corpo.com-player .player video { max-height: calc(100% - 40px); }
 
 .preview-meta {
@@ -1021,6 +1112,16 @@ body.arrastando .row, body.arrastando .telha { cursor: grabbing; }
   color: #ffb9bb;
   background: var(--danger-dim);
   border-color: rgba(229, 72, 77, 0.45);
+}
+
+/* ---------- laço de seleção (arrastar no vazio) ---------- */
+.laco-selecao {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  border: 1px solid var(--accent);
+  background: rgba(90, 169, 230, 0.16);
+  border-radius: 3px;
 }
 
 /* ---------- menu de contexto ---------- */

@@ -347,6 +347,64 @@ public sealed class FfmpegCommandTests
         Assert.DoesNotContain("-color_range", args);
     }
 
+    [Fact]
+    public void OrigemEntrelacadaDesentrelacaNaConversao()
+    {
+        var info = new MediaInfo
+        {
+            Caminho = @"C:\a.mxf",
+            Largura = 1920,
+            Altura = 1080,
+            Fps = 25,
+            PixFmt = "yuv422p",
+            Codec = "mpeg2video",
+            Interlaced = true,
+            FieldOrder = "tt",
+        };
+
+        var plano = VideoPlanBuilder.Choose(info, "prores422_mov", 0);
+        var args = FfmpegCommandBuilder.Build(info, plano, "e.mxf", "s.mov");
+
+        Assert.True(plano.Desentrelacar);
+        var indice = args.IndexOf("-vf");
+        Assert.True(indice >= 0, "esperava um filtro de vídeo");
+        Assert.Contains("bwdif", args[indice + 1]);
+    }
+
+    [Fact]
+    public void DesentrelacamentoCombinaComAjusteDeDimensaoImpar()
+    {
+        var info = new MediaInfo
+        {
+            Caminho = @"C:\a.mxf",
+            Largura = 1921,
+            Altura = 1081,
+            Fps = 25,
+            PixFmt = "yuv422p",
+            Interlaced = true,
+        };
+
+        var plano = VideoPlanBuilder.Choose(info, "auto", 0);
+        var args = FfmpegCommandBuilder.Build(info, plano, "e.mxf", "s.mov");
+
+        var cadeia = args[args.IndexOf("-vf") + 1];
+        Assert.Contains("scale=trunc(iw/2)*2:trunc(ih/2)*2", cadeia);
+        Assert.Contains("bwdif", cadeia);
+        Assert.Equal(1, args.Count(a => a == "-vf"));
+    }
+
+    [Fact]
+    public void ProgressivoNaoRecebeFiltroDeDesentrelacamento()
+    {
+        var info = new MediaInfo { Caminho = @"C:\a.mp4", Largura = 1920, Altura = 1080, Fps = 25, PixFmt = "yuv420p" };
+
+        var plano = VideoPlanBuilder.Choose(info, "prores422_mov", 0);
+        var args = FfmpegCommandBuilder.Build(info, plano, "e.mp4", "s.mov");
+
+        Assert.False(plano.Desentrelacar);
+        Assert.DoesNotContain("-vf", args);
+    }
+
     private static void AssertContains(List<string> args, string chave, string valor)
     {
         var indice = args.IndexOf(chave);
