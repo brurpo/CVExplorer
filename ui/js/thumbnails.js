@@ -98,23 +98,31 @@ function bombear() {
         }
 
         // Modelo 3D ou PDF/.ai: o host entrega o arquivo e espera o WebP renderizado aqui.
-        if (resposta?.renderizar && resposta.arquivoUrl) {
-          const pedidoRender = {
+        if (resposta?.renderizar === '3d') {
+          fila3d.push({
+            k,
+            url: resposta.arquivoUrl,
+            precisaConverter: Boolean(resposta.precisaConverter),
+            caminho: pedido.item.Caminho ?? pedido.item.caminho,
+            chave: resposta.chave,
+            tipo: resposta.renderizar,
+            ext: resposta.ext ?? (pedido.item.Nome ?? pedido.item.nome ?? '').split('.').pop(),
+            tamanho: pedido.tamanho,
+          });
+          bombear3d();
+          return;
+        }
+
+        if (resposta?.renderizar === 'pdf' && resposta.arquivoUrl) {
+          filaPdf.push({
             k,
             url: resposta.arquivoUrl,
             chave: resposta.chave,
             tipo: resposta.renderizar,
-            ext: (pedido.item.Nome ?? pedido.item.nome ?? '').split('.').pop(),
+            ext: resposta.ext ?? (pedido.item.Nome ?? pedido.item.nome ?? '').split('.').pop(),
             tamanho: pedido.tamanho,
-          };
-
-          if (resposta.renderizar === '3d') {
-            fila3d.push(pedidoRender);
-            bombear3d();
-          } else {
-            filaPdf.push(pedidoRender);
-            bombearPdf();
-          }
+          });
+          bombearPdf();
           return;
         }
 
@@ -133,8 +141,17 @@ function bombear3d() {
     const pedido = fila3d.shift();
     ativos3d++;
 
-    thumb3d
-      .gerar(pedido.url, pedido.ext, pedido.tamanho)
+    // USD e Alembic não têm loader no navegador: o host converte uma vez para GLB
+    // (Blender em segundo plano) e devolve a URL do arquivo convertido.
+    const resolver = () => (pedido.precisaConverter
+      ? call('modelo.arquivo', { caminho: pedido.caminho })
+      : Promise.resolve(pedido.url ? { ok: true, url: pedido.url, ext: pedido.ext } : null));
+
+    resolver()
+      .then((alvo) => {
+        if (!alvo?.ok || !alvo.url) throw new Error(alvo?.erro ?? 'sem arquivo');
+        return thumb3d.gerar(alvo.url, alvo.ext, pedido.tamanho);
+      })
       .then((dados) => call('thumb.salvar', { chave: pedido.chave, dados }))
       .then((resposta) => {
         if (resposta?.ok && resposta.url) concluir(pedido.k, resposta.url);

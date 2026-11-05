@@ -576,8 +576,11 @@ public sealed class Janela : Form
         var baseRet = referencia?.Bounds ?? new Rectangle(120, 90, 1280, 820);
         var area = Screen.FromPoint(new Point(baseRet.X + 40, baseRet.Y + 40)).WorkingArea;
 
-        var largura = referencia?.Width ?? baseRet.Width;
-        var altura = referencia?.Height ?? baseRet.Height;
+        // Um pouco menor que a referencia: com o mesmo tamanho da area de trabalho o
+        // deslocamento seria zerado e a janela nasceria exatamente sobre a outra.
+        var largura = Math.Max(MinimumSize.Width, Math.Min(referencia?.Width ?? baseRet.Width, area.Width - 96));
+        var altura = Math.Max(MinimumSize.Height, Math.Min(referencia?.Height ?? baseRet.Height, area.Height - 96));
+
         var x = Math.Min(area.Right - largura, baseRet.X + 48);
         var y = Math.Min(area.Bottom - altura, baseRet.Y + 48);
 

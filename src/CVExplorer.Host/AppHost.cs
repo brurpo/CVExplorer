@@ -53,6 +53,9 @@ public sealed class AppHost
 
     public ThumbnailService Thumbs { get; }
 
+    /// <summary>Modelos 3D: resolve o formato que o navegador desenha (USD/Alembic via Blender).</summary>
+    public ModeloService Modelos { get; } = new();
+
     public FfmpegLocator Ffmpeg { get; }
 
     public MediaProbe Probe { get; }

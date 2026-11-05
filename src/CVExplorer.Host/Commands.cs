@@ -224,6 +224,31 @@ public static class Commands
             });
         });
 
+        // Modelo 3D pronto para o visualizador: caminho direto ou GLB convertido pelo Blender.
+        Add("modelo.arquivo", async (args, ct) =>
+        {
+            var caminho = Str(args, "caminho");
+            if (string.IsNullOrWhiteSpace(caminho) || !File.Exists(caminho))
+            {
+                return new { ok = false, erro = "arquivo não encontrado" };
+            }
+
+            var preparado = await host.Modelos.PrepararAsync(caminho, ct).ConfigureAwait(false);
+            if (preparado.Erro is not null)
+            {
+                return new { ok = false, erro = preparado.Erro };
+            }
+
+            return new
+            {
+                ok = true,
+                url = host.Player.RegistrarArquivo(preparado.Caminho),
+                ext = preparado.Ext,
+                nome = Path.GetFileName(caminho),
+                convertido = preparado.Convertido,
+            };
+        }, operacao: true);
+
         // ---------- arraste entre janelas ----------
 
         Add("arraste.iniciar", (args, _) =>
@@ -861,7 +886,13 @@ public static class Commands
                 pronta = resultado.Pronta,
                 url = resultado.Pronta ? ThumbnailService.UrlFor(resultado.Chave) : null,
                 renderizar = resultado.Renderizar,
-                arquivoUrl = resultado.Renderizar is null ? null : host.Player.RegistrarArquivo(caminho),
+                // Modelo que o navegador não lê direto (USD, Alembic) é convertido sob demanda
+                // na fila 3D da interface: o host não bloqueia a listagem esperando o Blender.
+                precisaConverter = resultado.Renderizar == "3d" && ModeloService.PrecisaConverter(caminho),
+                arquivoUrl = resultado.Renderizar is null || ModeloService.PrecisaConverter(caminho)
+                    ? null
+                    : host.Player.RegistrarArquivo(caminho),
+                ext = resultado.Renderizar is null ? null : Path.GetExtension(caminho).TrimStart('.'),
             };
         }, operacao: true);
 

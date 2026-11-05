@@ -145,10 +145,11 @@ No estilo do Explorer, sem lista de projetos:
 - **Abas**: cada aba guarda pasta, histórico e seleção. `Ctrl+T` abre, `Ctrl+W` fecha,
   `Ctrl+Tab`/`Ctrl+Shift+Tab` andam entre elas; o **+** da barra abre outra. `Ctrl+clique` soma ou
   tira uma aba da seleção e `Shift+clique` seleciona o intervalo. Arrastar as abas dentro da barra
-  **reordena na hora**, com a etiqueta do que está sendo levado colada no cursor. Saindo da janela,
-  **a janela nova nasce já ali, embaixo do cursor**, com as abas; soltar sobre a barra de outra
-  janela junta as abas lá. Arrastar a **barra de título** de uma janela sobre a barra de abas de
-  outra funde as duas (a janela arrastada some e as abas dela entram na outra).
+  **reordena na hora**, com a etiqueta do que está sendo levado colada no cursor. **Saindo da barra**
+  (para a grade, para outra janela ou para fora do app) a janela nova nasce já ali, embaixo do
+  cursor, com as abas; soltar sobre a barra de outra janela junta as abas lá. Arrastar a **barra de
+  título** de uma janela sobre a barra de abas de outra funde as duas (a janela arrastada some e as
+  abas dela entram na outra).
 - **Pastas maiores**: clique com o botão direito numa pasta → **Pastas maiores…** abre uma janela
   com o tamanho de cada subpasta direta, do maior para o menor (barra, tamanho, % do total e
   contagem de arquivos). A varredura roda em paralelo no host; duplo clique numa linha abre aquela
@@ -220,7 +221,8 @@ miniatura chega** (antes era apagado junto com o ícone).
 | **SVG** | Magick.NET |
 | **EXR / HDR** | Magick.NET (com ajuste de exposição para não sair preta) |
 | **.blend** | **miniatura embutida no próprio arquivo** (bloco `TEST`), lida antes do Shell — instantânea, sem abrir o Blender. Funciona com arquivo comprimido (zstd, que é o padrão ao salvar) e com o cabeçalho novo do Blender 5 (`BLENDER17-01v0502`), por isso a leitura é por **varredura validada** do bloco, não por posição fixa |
-| **OBJ, FBX, GLB, GLTF, STL, USDZ** | **render próprio em 3D** (three.js em Web Worker + WebGL), câmera em 3/4 |
+| **OBJ, FBX, GLB, GLTF, STL, USDZ, DAE** | **render próprio em 3D** (three.js em Web Worker + WebGL), câmera em 3/4 |
+| **USD (.usd/.usda/.usdc) e Alembic (.abc)** | não têm loader no navegador: o app chama o **Blender instalado** uma vez (`-b --factory-startup`), converte para GLB num cache em `%LOCALAPPDATA%\CVExplorer\modelos` e serve o GLB. Sem Blender, fica o ícone do tipo |
 | MP4, MOV, MXF, AVI, MKV… | frame extraído com ffmpeg → Shell |
 | USD, USDA, USDC, ABC, MA, MB, 3DS, DAE… | ícone do tipo (sem loader no app) |
 
@@ -235,9 +237,9 @@ Tudo que decodifica roda fora da thread da interface, em três filas independent
 | Etapa | Onde roda | Paralelismo |
 |---|---|---|
 | Decoders do host (Shell, Magick, .blend, ffmpeg) | pool de tarefas com `SemaphoreSlim` | `núcleos / 4`, entre **4 e 12** (era 6 no seu 32-núcleos; agora 8) |
-| `.glb/.obj/.stl/.usdz` | **Web Workers** com OffscreenCanvas | 2–3 workers (`hardwareConcurrency - 2`) |
-| `.ai/.pdf` | pdf.js | 3 por vez |
+| `.glb/.obj/.stl/.usdz` | **Web Workers** com OffscreenCanvas | 2–3 workers (`hardwareConcurrency - 2`) || `.ai/.pdf` | pdf.js | 3 por vez |
 | `.fbx` | thread da interface (FBXLoader usa `document` para texturas) | 1 por vez |
+| `.dae` | thread da interface (ColladaLoader é carregado sob demanda, com o TGALoader junto) | 1 por vez |
 
 Medido no app com um **GLB de 225 MB**: miniatura pronta em **1,57 s**, com o pior intervalo
 entre quadros da interface em **19 ms** — ou seja, a janela não congela enquanto o modelo é

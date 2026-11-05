@@ -78,8 +78,25 @@ public sealed class AbasService
     /// <summary>O arraste terminou dentro da própria janela: nada a fazer no host.</summary>
     public void Cancelar()
     {
+        LimparAlvo();
         Encerrar();
         _host.EmitTodos("abas.arraste", new { ativo = false });
+    }
+
+    /// <summary>Tira o realce de quem estava marcado como destino.</summary>
+    private void LimparAlvo()
+    {
+        Janela? anterior;
+        lock (_gate)
+        {
+            anterior = _alvo;
+            _alvo = null;
+        }
+
+        if (anterior is { IsDisposed: false })
+        {
+            anterior.Enviar("abas.alvo", new { ativo = false });
+        }
     }
 
     private void Encerrar()
@@ -207,9 +224,9 @@ public sealed class AbasService
     {
         if (destacada is null)
         {
-            // Saiu da janela de origem com o botão ainda pressionado: a janela nova
-            // nasce já embaixo do cursor, com as abas que estavam sendo arrastadas.
-            if (origem.ContemPonto(x, y))
+            // Saiu da **barra de abas** (para a grade, para outra janela ou para fora do app)
+            // com o botão ainda pressionado: a janela nova nasce já ali, embaixo do cursor.
+            if (DentroDaFaixa(x, y, origem))
             {
                 Marcar(null, origem.Id);
                 return;
@@ -220,6 +237,26 @@ public sealed class AbasService
         }
 
         Marcar(NaFaixaDeAbas(x, y, destacada.Id), destacada.Id);
+    }
+
+    /// <summary>O ponto está na barra de abas desta janela? (é o que mantém o arraste como reordenação)</summary>
+    private static bool DentroDaFaixa(int x, int y, Janela janela)
+    {
+        if (janela.IsDisposed)
+        {
+            return false;
+        }
+
+        var escala = janela.DeviceDpi / 96.0;
+        var faixa = new Rectangle(
+            janela.Bounds.Left,
+            janela.Bounds.Top + (int)Math.Round(FaixaTopo * escala),
+            janela.Bounds.Width,
+            (int)Math.Round(FaixaAltura * escala));
+
+        // Uma folga pequena evita destacar por tremer o mouse na borda da barra.
+        faixa.Inflate(0, (int)Math.Round(4 * escala));
+        return faixa.Contains(x, y);
     }
 
     /// <summary>Cria a janela destacada uma única vez, no ponto do cursor.</summary>
@@ -275,17 +312,19 @@ public sealed class AbasService
                 origem.Enviar("abas.destacada", new { janela = alvo.Id });
             }
 
+            LimparAlvo();
             Encerrar();
             _host.EmitTodos("abas.arraste", new { ativo = false });
             return;
         }
 
-        if (destacada is null && !origem.ContemPonto(x, y))
+        if (destacada is null && !DentroDaFaixa(x, y, origem))
         {
-            // Soltou fora de tudo sem ter saído da janela: ainda vira janela nova.
+            // Soltou fora da barra sem ter destacado antes: ainda vira janela nova.
             Destacar(x, y, origem);
         }
 
+        LimparAlvo();
         Encerrar();
         _host.EmitTodos("abas.arraste", new { ativo = false });
     }
@@ -301,6 +340,7 @@ public sealed class AbasService
             origem.Enviar("abas.fundir", new { destino = alvo.Id });
         }
 
+        LimparAlvo();
         Encerrar();
         _host.EmitTodos("abas.arraste", new { ativo = false });
     }

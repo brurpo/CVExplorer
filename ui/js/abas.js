@@ -68,7 +68,9 @@ export function iniciar({ caminho, extras = [] }) {
   });
 
   on('abas.arraste', (dados) => {
-    if (!dados?.ativo) document.body.classList.remove('aba-arrastando');
+    if (!dados?.ativo) {
+      document.body.classList.remove('aba-arrastando', 'abas-alvo');
+    }
   });
 
   // Uma janela nova levou as abas que estávamos arrastando: some com elas daqui.
@@ -170,7 +172,7 @@ function finalizarArraste() {
   const atual = arrasteAtual;
   arrasteAtual = null;
   arrastandoSelecao = false;
-  document.body.classList.remove('aba-arrastando');
+  document.body.classList.remove('aba-arrastando', 'abas-alvo');
   fantasmaRemover();
   if (atual) atual();
 }

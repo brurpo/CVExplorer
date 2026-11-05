@@ -8,10 +8,10 @@ import { desenhar } from './thumb3dRender.js';
  * Exceção: FBX usa `document` para resolver texturas, então cai para a thread
  * da interface (o parse continua rápido; só não é paralelo).
  */
-const EXTENSOES = ['obj', 'fbx', 'glb', 'gltf', 'stl', 'usdz'];
+const EXTENSOES = ['obj', 'fbx', 'glb', 'gltf', 'stl', 'usdz', 'dae'];
 
-/** Formatos que o worker não consegue desenhar sozinho. */
-const SOMENTE_THREAD = ['fbx'];
+/** Formatos que o worker não consegue desenhar sozinho (dependem de `document`). */
+const SOMENTE_THREAD = ['fbx', 'dae'];
 
 /** Acima disso o parse estoura memória do WebView com facilidade. */
 export const TAMANHO_MAXIMO = 350 * 1024 * 1024;
@@ -42,7 +42,16 @@ function criarWorkers() {
         pendente.resolve(buffer);
       }
     };
-    worker.onerror = (evento) => console.error('worker 3d', evento.message);
+    worker.onerror = (evento) => {
+      console.error('worker 3d', evento.message);
+      // Devolve o erro a quem esperava: sem isso o pedido ficaria pendurado.
+      for (const [id, pendente] of pendentes) {
+        if (pendente.worker === worker) {
+          pendentes.delete(id);
+          pendente.reject(new Error(evento.message || 'worker 3d falhou'));
+        }
+      }
+    };
     lista.push(worker);
   }
 
@@ -107,19 +116,24 @@ export async function gerar(url, ext, tamanho = 256) {
     const id = proximoId++;
     const worker = proximoLivre();
 
-    const buffer = await new Promise((resolve, reject) => {
-      pendentes.set(id, { resolve, reject, worker });
-      worker.postMessage({ id, url, ext: tipo, tamanho });
-    });
+    // Se o worker morrer sem responder (módulo quebrado, WebGL indisponível), o pedido
+    // não pode ficar pendurado para sempre: estoura o tempo e cai para a thread principal.
+    const buffer = await Promise.race([
+      new Promise((resolve, reject) => {
+        pendentes.set(id, { resolve, reject, worker });
+        worker.postMessage({ id, url, ext: tipo, tamanho });
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('worker 3d sem resposta')), 60000)),
+    ]);
 
     return await paraDataUrl(buffer);
   } catch (erro) {
-    // Ambiente sem OffscreenCanvas/WebGL no worker: repete na thread principal.
-    if (/document is not defined|OffscreenCanvas|WebGL/i.test(erro?.message ?? '')) {
-      return naThread(url, tipo, tamanho);
+    // Worker sem OffscreenCanvas/WebGL, módulo que não carregou ou travou: desenha aqui.
+    try {
+      return await naThread(url, tipo, tamanho);
+    } catch {
+      throw erro;
     }
-
-    throw erro;
   }
 }
 

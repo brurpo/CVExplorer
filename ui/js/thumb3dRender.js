@@ -10,7 +10,11 @@ import { USDZLoader } from '../vendor/three/examples/jsm/loaders/USDZLoader.js';
  * — que depende de `document` para texturas —, pela propria thread da interface.
  */
 
-function criadorDeLoader(ext) {
+/**
+ * DAE é carregado sob demanda: o ColladaLoader arrasta o TGALoader, que não é coisa de
+ * worker. Import dinâmico mantém o grafo do worker limpo e só paga o custo no DAE.
+ */
+async function criadorDeLoader(ext) {
   switch (ext) {
     case 'glb':
     case 'gltf':
@@ -23,6 +27,10 @@ function criadorDeLoader(ext) {
       return new FBXLoader();
     case 'usdz':
       return new USDZLoader();
+    case 'dae': {
+      const { ColladaLoader } = await import('../vendor/three/examples/jsm/loaders/ColladaLoader.js');
+      return new ColladaLoader();
+    }
     default:
       return null;
   }
@@ -81,7 +89,7 @@ function paraBlob(canvas) {
  * @returns {Promise<Blob>}
  */
 export async function desenhar(url, ext, tamanho, criarCanvas) {
-  const loader = criadorDeLoader(ext);
+  const loader = await criadorDeLoader(ext);
   if (!loader) {
     throw new Error(`sem loader para .${ext}`);
   }

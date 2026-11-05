@@ -100,7 +100,7 @@ async function mostrarVideo(caminho) {
   };
 }
 
-function criadorDeLoader(ext) {
+async function criadorDeLoader(ext) {
   switch (ext) {
     case 'glb':
     case 'gltf':
@@ -113,27 +113,38 @@ function criadorDeLoader(ext) {
       return new FBXLoader();
     case 'usdz':
       return new USDZLoader();
+    case 'dae': {
+      // Sob demanda: o ColladaLoader arrasta o TGALoader junto.
+      const { ColladaLoader } = await import('../vendor/three/examples/jsm/loaders/ColladaLoader.js');
+      return new ColladaLoader();
+    }
     default:
       return null;
   }
 }
 
 async function mostrar3d(caminho, ext) {
-  const loader = criadorDeLoader(ext);
-  if (!loader) {
-    throw new Error(t('previa.semModelo', { ext }));
+  // O host resolve o formato: GLB/OBJ/FBX/STL/USDZ/DAE vão direto, USD e Alembic
+  // passam uma vez pelo Blender e chegam aqui como GLB.
+  const arquivo = await call('modelo.arquivo', { caminho });
+  if (!arquivo?.ok) {
+    throw new Error(arquivo?.erro ?? t('previa.semModelo', { ext }));
   }
 
-  const { url } = await call('fs.arquivoUrl', { caminho });
-  const objeto = await carregarModelo(loader, url, ext);
+  const loader = await criadorDeLoader(arquivo.ext ?? ext);
+  if (!loader) {
+    throw new Error(t('previa.semModelo', { ext: arquivo.ext ?? ext }));
+  }
 
-  const alvo = raiz();
+  const objeto = await carregarModelo(loader, arquivo.url, arquivo.ext ?? ext);
+
+  const corpo = document.getElementById('previa-rapida-corpo');
   const canvas = document.createElement('canvas');
   canvas.className = 'previa-rapida-canvas';
-  alvo.replaceChildren(canvas);
+  corpo.replaceChildren(canvas);
 
-  const largura = alvo.clientWidth || 720;
-  const altura = alvo.clientHeight || 520;
+  const largura = corpo.clientWidth || 720;
+  const altura = corpo.clientHeight || 520;
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio || 1);
@@ -182,8 +193,8 @@ async function mostrar3d(caminho, ext) {
   };
 
   const desenhar = () => {
-    const l = alvo.clientWidth || largura;
-    const a = alvo.clientHeight || altura;
+    const l = corpo.clientWidth || largura;
+    const a = corpo.clientHeight || altura;
     renderer.setSize(l, a, false);
     camera.aspect = l / a;
     camera.updateProjectionMatrix();
@@ -272,8 +283,7 @@ function carregarModelo(loader, url, ext) {
           reject(new Error(t('previa.semGeometria')));
         } else if (ext === 'glb' || ext === 'gltf') {
           resolve(resultado.scene);
-        } else if (ext === 'stl') {
-          resultado.computeVertexNormals();
+        } else if (ext === 'stl') {          resultado.computeVertexNormals();
           resolve(new THREE.Mesh(
             resultado,
             new THREE.MeshStandardMaterial({ color: 0xb9c0c9, metalness: 0.1, roughness: 0.7 }),

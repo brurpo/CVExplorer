@@ -46,7 +46,9 @@ public sealed class ThumbnailService
     /// <summary>Formatos que o proprio app renderiza (three.js no WebView2).</summary>
     private static readonly HashSet<string> Modelos3D = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".obj", ".fbx", ".glb", ".gltf", ".stl", ".usdz",
+        ".obj", ".fbx", ".glb", ".gltf", ".stl", ".usdz", ".dae",
+        // USD e Alembic não têm loader no navegador: o Blender converte uma vez para GLB.
+        ".usd", ".usda", ".usdc", ".abc",
     };
 
     public static bool EhModelo3D(string caminho) => Modelos3D.Contains(Path.GetExtension(caminho));
@@ -137,6 +139,13 @@ public sealed class ThumbnailService
         // Compactado usa o icone do proprio app: a miniatura do Shell (pasta com ziper)
         // vem colorida e destoa do resto da grade.
         if (ArchiveService.EhCompactado(caminho))
+        {
+            return new ThumbnailResult { Chave = chave, Pronta = false };
+        }
+
+        // Item dentro de um compactado não existe no disco: decodificador nenhum alcança,
+        // então fica o ícone do tipo (sem tentar Shell/Magick e sujar o log).
+        if (ArchiveService.Separar(caminho) is not null)
         {
             return new ThumbnailResult { Chave = chave, Pronta = false };
         }

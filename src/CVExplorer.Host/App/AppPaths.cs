@@ -16,6 +16,9 @@ internal static class AppPaths
 
     public static string ThumbsDir => Path.Combine(Root, "miniaturas");
 
+    /// <summary>Modelos convertidos para GLB (USD/Alembic passam pelo Blender uma vez).</summary>
+    public static string ModelosDir => Path.Combine(Root, "modelos");
+
     public static string LogsDir => Path.Combine(Root, "logs");
 
     public static string UiDir { get; } = Path.Combine(AppContext.BaseDirectory, "ui");
@@ -32,6 +35,7 @@ internal static class AppPaths
     {
         Directory.CreateDirectory(Root);
         Directory.CreateDirectory(ThumbsDir);
+        Directory.CreateDirectory(ModelosDir);
         Directory.CreateDirectory(LogsDir);
     }
 }
