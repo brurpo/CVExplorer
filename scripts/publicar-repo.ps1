@@ -24,10 +24,55 @@ $ErrorActionPreference = "Stop"
 $raiz = Split-Path $PSScriptRoot -Parent
 $git = "git"
 
+# Sem token no ambiente: tenta o cofre do Windows (o mesmo que scripts\token-github.ps1 grava).
+if (-not $Token) {
+    if (-not ("CofreWin32Leitura" -as [type])) {
+        Add-Type -Namespace "" -Name CofreWin32Leitura -MemberDefinition @'
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct CREDENTIAL
+    {
+        public int Flags;
+        public int Type;
+        public string TargetName;
+        public string Comment;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastWritten;
+        public int CredentialBlobSize;
+        public IntPtr CredentialBlob;
+        public int Persist;
+        public int AttributeCount;
+        public IntPtr Attributes;
+        public string TargetAlias;
+        public string UserName;
+    }
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern bool CredRead(string target, int type, int flags, out IntPtr cred);
+
+    [DllImport("advapi32.dll")]
+    public static extern void CredFree(IntPtr cred);
+'@
+    }
+
+    $ptr = [IntPtr]::Zero
+    if ([CofreWin32Leitura]::CredRead("git:https://github.com", 1, 0, [ref]$ptr)) {
+        try {
+            $cred = [System.Runtime.InteropServices.Marshal]::PtrToStructure($ptr, [type]("CofreWin32Leitura+CREDENTIAL"))
+            if ($cred.CredentialBlobSize -gt 0) {
+                $Token = [System.Runtime.InteropServices.Marshal]::PtrToStringUni($cred.CredentialBlob, $cred.CredentialBlobSize / 2)
+                Write-Host "Token lido do cofre do Windows." -ForegroundColor DarkGray
+            }
+        }
+        finally {
+            [CofreWin32Leitura]::CredFree($ptr)
+        }
+    }
+}
+
 if (-not $Token) {
     Write-Host "Sem token do GitHub." -ForegroundColor Yellow
     Write-Host "  1) crie um em https://github.com/settings/tokens (escopo 'repo')"
-    Write-Host "  2) rode: `$env:GITHUB_TOKEN = 'ghp_...' e chame este script de novo"
+    Write-Host "  2) guarde no cofre com: .\scripts\token-github.ps1"
+    Write-Host "     (ou defina `$env:GITHUB_TOKEN e chame este script de novo)"
     Write-Host ""
     Write-Host "Sem token, o caminho manual é:" -ForegroundColor Cyan
     Write-Host "  git remote add origin https://github.com/SEU-USUARIO/$Nome.git"
