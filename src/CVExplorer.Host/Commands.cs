@@ -414,9 +414,10 @@ public static class Commands
         Add("project.filhosModelo", (args, _) =>
         {
             var caminho = Str(args, "caminho");
+            var temQuadro = TemplateCatalog.QuadroNode(host.Template) is not null;
             if (string.IsNullOrWhiteSpace(caminho) || !Directory.Exists(caminho))
             {
-                return Task.FromResult<object?>(new { filhos = Array.Empty<object>() });
+                return Task.FromResult<object?>(new { filhos = Array.Empty<object>(), quadro = temQuadro });
             }
 
             var modelo = host.Template;
@@ -430,7 +431,7 @@ public static class Commands
 
             if (no.Count == 0)
             {
-                return Task.FromResult<object?>(new { filhos = Array.Empty<object>() });
+                return Task.FromResult<object?>(new { filhos = Array.Empty<object>(), quadro = temQuadro });
             }
 
             var existentes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -456,7 +457,29 @@ public static class Commands
                 })
                 .ToList();
 
-            return Task.FromResult<object?>(new { origem = nome, raiz = raizDeProjeto, filhos });
+            return Task.FromResult<object?>(new { origem = nome, raiz = raizDeProjeto, quadro = temQuadro, filhos });
+        });
+
+        // Cria uma pasta de quadro em qualquer lugar, com a estrutura que o modelo define dentro.
+        Add("project.criarQuadro", (args, _) =>
+        {
+            var pai = Str(args, "caminho");
+            if (string.IsNullOrWhiteSpace(pai) || !Directory.Exists(pai))
+            {
+                return Task.FromResult<object?>(new { ok = false, erro = "Pasta nao encontrada." });
+            }
+
+            var resultado = TemplateMaterializer.CreateQuadro(pai, Str(args, "nome"), TemplateCatalog.QuadroNode(host.Template));
+            var caminho = Path.Combine(pai, TemplateMaterializer.SanitizeSegment(Str(args, "nome")));
+
+            return Task.FromResult<object?>(new
+            {
+                ok = resultado.Erros.Count == 0,
+                caminho,
+                criadas = resultado.Criadas,
+                jaExistiam = resultado.JaExistiam,
+                erros = resultado.Erros,
+            });
         });
 
         // ---------- busca ----------

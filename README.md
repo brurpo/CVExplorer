@@ -159,10 +159,13 @@ No estilo do Explorer, sem lista de projetos:
   estado é lembrado.
 - **Slider de miniaturas no rodapé**: controla o tamanho das telhas da grade ao vivo (96–340 px),
   e o valor fica salvo em `TamanhoGrade`.
-- **Menu "Novo" nas pastas**: ao clicar com o botão direito numa pasta, o submenu **Novo ▸** lista as
-  subpastas que o *modelo do projeto* prevê para aquela pasta — inclusive quando ela é um **quadro**
-  (casa pelo token `{QUADRO}` do pai). O que já existe aparece como *"já existe"* e desabilitado,
-  então não há duplicata. Sempre há também *Pasta em branco…*.
+- **Menu "Novo" nas pastas**: ao clicar com o botão direito numa pasta — ou na área vazia — o submenu
+  **Novo ▸** lista as subpastas que o *modelo do projeto* prevê para aquele lugar: na raiz de um
+  projeto (pasta com `.cvproj`) são as de primeiro nível (`PACOTE_GRAFICO`, `CHAMADAS`, `ABERTURA`,
+  `EDITORIA`, `SAIDA`, `REFERENCIAS`); dentro de uma pasta do modelo são as filhas dela; e dentro de um
+  **quadro** são as do token `{QUADRO}`. O que já existe aparece como *"já existe"* e desabilitado,
+  então não há duplicata. Sempre há também *Pasta em branco…* e *Novo quadro…* — este último pede o
+  nome e cria a pasta **em qualquer lugar**, já com a estrutura de quadro do modelo dentro.
 - Escalas de Windows são respeitadas: o app é *per monitor v2*, então arraste de coluna, divisória
   e cursor usam as mesmas unidades (px de CSS) em 100%, 150% ou 200%.
 

@@ -92,6 +92,72 @@ public sealed class TemplateCatalogTests
 
         Assert.Empty(filhos);
     }
+
+    [Fact]
+    public void EncontraONoDeQuadroDoModelo()
+    {
+        var quadro = TemplateCatalog.QuadroNode(Modelo);
+
+        Assert.NotNull(quadro);
+        Assert.Contains(quadro!.Filhos, f => f.Nome == "ELEMENTOS");
+    }
+
+    [Fact]
+    public void QuadroEmQualquerPastaCriaAEstruturaDoModelo()
+    {
+        using var temp = new PastaTemporaria();
+        var qualquer = temp.CriarPasta("PACOTE_GRAFICO");
+
+        var resultado = TemplateMaterializer.CreateQuadro(
+            qualquer, "CENA_01", TemplateCatalog.QuadroNode(Modelo));
+
+        Assert.Empty(resultado.Erros);
+        Assert.True(Directory.Exists(Path.Combine(qualquer, "CENA_01")));
+        Assert.True(Directory.Exists(Path.Combine(qualquer, "CENA_01", "ELEMENTOS", "AUDIO")));
+        Assert.True(Directory.Exists(Path.Combine(qualquer, "CENA_01", "PROJETOS", "AE")));
+        Assert.True(Directory.Exists(Path.Combine(qualquer, "CENA_01", "REFERENCIAS", "VIDEOS")));
+        // o irmao nao foi criado: nada de estrutura fora do quadro
+        Assert.False(Directory.Exists(Path.Combine(qualquer, "ELEMENTOS")));
+    }
+
+    [Fact]
+    public void QuadroRepetidoNaoDuplica()
+    {
+        using var temp = new PastaTemporaria();
+        var quadro = TemplateCatalog.QuadroNode(Modelo);
+
+        var primeiro = TemplateMaterializer.CreateQuadro(temp.Caminho, "CENA_01", quadro);
+        var segundo = TemplateMaterializer.CreateQuadro(temp.Caminho, "CENA_01", quadro);
+
+        Assert.NotEmpty(primeiro.Criadas);
+        Assert.Empty(segundo.Criadas);
+        Assert.Empty(segundo.Erros);
+        Assert.Contains("CENA_01", segundo.JaExistiam);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("...")]
+    public void QuadroSemNomeValidoNaoCriaNada(string nome)
+    {
+        using var temp = new PastaTemporaria();
+
+        var resultado = TemplateMaterializer.CreateQuadro(temp.Caminho, nome, TemplateCatalog.QuadroNode(Modelo));
+
+        Assert.NotEmpty(resultado.Erros);
+        Assert.Empty(Directory.EnumerateDirectories(temp.Caminho));
+    }
+
+    [Fact]
+    public void QuadroUsaONomeLimpoComoPasta()
+    {
+        using var temp = new PastaTemporaria();
+
+        TemplateMaterializer.CreateQuadro(temp.Caminho, "CENA:01 ", TemplateCatalog.QuadroNode(Modelo));
+
+        Assert.True(Directory.Exists(Path.Combine(temp.Caminho, "CENA_01")));
+    }
 }
 
 public sealed class TemplateMaterializerTests

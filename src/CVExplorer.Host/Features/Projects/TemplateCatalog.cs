@@ -181,6 +181,10 @@ public static class TemplateCatalog
         return result;
     }
 
+    /// <summary>Nó que se repete por quadro (pasta chamada {QUADRO}), se o modelo tiver um.</summary>
+    public static TemplateNode? QuadroNode(List<TemplateNode> nodes) =>
+        AllNodes(nodes).FirstOrDefault(n => n.Nome.Equals(QuadroToken, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>
     /// Pastas do modelo que fazem sentido criar dentro de uma pasta.
     /// Na raiz de um projeto são as pastas de primeiro nível (PACOTE_GRAFICO, CHAMADAS,

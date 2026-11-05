@@ -80,6 +80,27 @@ public static class TemplateMaterializer
         return result;
     }
 
+    /// <summary>
+    /// Cria uma pasta de quadro (ex.: CENA_01) com a estrutura que o modelo define dentro dele.
+    /// Pode ser em qualquer pasta: o pai não precisa ser a raiz nem o EDITORIA.
+    /// </summary>
+    public static MaterializeResult CreateQuadro(string parent, string? name, TemplateNode? quadroNode)
+    {
+        var result = new MaterializeResult();
+        var limpo = SanitizeSegment(name);
+        if (limpo.Length == 0)
+        {
+            result.Erros.Add("Informe o nome do quadro.");
+            return result;
+        }
+
+        var caminhos = quadroNode is null
+            ? new List<string> { TemplateCatalog.QuadroToken }
+            : TemplateCatalog.Flatten(new List<TemplateNode> { quadroNode });
+
+        return Materialize(parent, caminhos, new[] { limpo });
+    }
+
     private static IEnumerable<string> Expand(string raw, List<string> quadros, MaterializeResult result)
     {
         var path = raw.Replace('\\', '/').Trim('/');
