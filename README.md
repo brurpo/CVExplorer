@@ -57,8 +57,9 @@ leve e o app procura o ffmpeg no PATH. Com `-Publicar` o script ainda:
 O app verifica essa release sozinho (`Velopack` + `GithubSource`) e mostra o botão **Atualizar**
 quando há versão nova. **Verificar atualizações vem ligado por padrão**
 (`VerificarAtualizacoes = true`); desligar é uma escolha em Configurações, não o contrário. Para
-procurar na hora, o ícone de **seta circular ao lado da engrenagem** faz a mesma verificação do menu
-(baixa, aplica e reinicia), com o ícone girando enquanto procura.
+procurar na hora, o **último ícone da barra** — uma **seta para dentro de uma bandeja**, de propósito
+diferente do ↻ de atualizar a pasta — faz a mesma verificação do menu (baixa, aplica e reinicia), e
+pulsa enquanto procura.
 
 > O workflow [.github/workflows/release.yml](.github/workflows/release.yml) faz o mesmo numa
 > máquina limpa, mas só roda por `workflow_dispatch` (Actions ▸ release ▸ Run workflow). Ele não

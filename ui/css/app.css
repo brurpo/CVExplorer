@@ -1802,11 +1802,12 @@ body[data-modo="relatorio"] {
 }
 
 /* Botão de verificar atualizações: gira enquanto procura. */
-.icon-btn.girando svg { animation: girar 900ms linear infinite; }
+/* Enquanto verifica, o ícone pulsa: girar um ícone de download não faria sentido. */
+.icon-btn.ocupado svg { animation: pulsar 900ms ease-in-out infinite; }
 
-@keyframes girar {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+@keyframes pulsar {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 
 .aba-nova svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }

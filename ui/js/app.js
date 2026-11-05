@@ -59,7 +59,7 @@ async function iniciar() {
   document.getElementById('btn-verificar-atualizacao').addEventListener('click', async (evento) => {
     const botao = evento.currentTarget;
     botao.disabled = true;
-    botao.classList.add('girando');
+    botao.classList.add('ocupado');
     ui.toast(t('config.verificando'), 'info', 2500);
 
     try {
@@ -83,7 +83,7 @@ async function iniciar() {
       ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
     } finally {
       botao.disabled = false;
-      botao.classList.remove('girando');
+      botao.classList.remove('ocupado');
     }
   });
 
