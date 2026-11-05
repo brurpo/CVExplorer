@@ -47,6 +47,11 @@
   --xadrez: #141518;
   --xadrez-2: #101113;
 
+  /* selo do tipo do arquivo (fundo escuro aqui, claro no tema claro) */
+  --badge-bg: rgba(8, 9, 11, 0.86);
+  --badge-border: rgba(255, 255, 255, 0.16);
+  --badge-text: #f0f2f5;
+
   color-scheme: dark;
 }
 
@@ -87,6 +92,11 @@ html[data-tema="claro"] {
   --barra-2: #f0f2f5;
   --xadrez: #e2e5ea;
   --xadrez-2: #eef0f3;
+
+  /* inverso no tema claro: selo branco com texto escuro */
+  --badge-bg: rgba(255, 255, 255, 0.94);
+  --badge-border: rgba(18, 22, 30, 0.16);
+  --badge-text: #1b1f27;
 
   color-scheme: light;
 }

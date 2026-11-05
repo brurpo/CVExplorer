@@ -552,9 +552,11 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
   bottom: 7px;
   padding: 3px 8px;
   border-radius: 5px;
-  background: rgba(8, 9, 11, 0.86);
-  border: 1px solid var(--border);
-  color: var(--text-2);
+  /* Selo do tipo: escuro no tema escuro e branco no claro (ver theme.css). */
+  background: var(--badge-bg);
+  border: 1px solid var(--badge-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  color: var(--badge-text);
   font-size: clamp(11.5px, calc(var(--lado-telha, 168px) * 0.075), 15px);
   font-weight: 700;
   letter-spacing: 0.4px;
@@ -713,7 +715,7 @@ body.redimensionando .col-cabecalho .alca.ativa::after { background: var(--accen
   bottom: 14px;
   padding: 6px 12px;
   border-radius: 8px;
-  background: rgba(23, 24, 27, 0.96);
+  background: var(--surface-2);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow);
   color: var(--text);
@@ -757,7 +759,7 @@ body.redimensionando .col-cabecalho .alca.ativa::after { background: var(--accen
   gap: 4px;
   padding: 14px 22px;
   border-radius: 10px;
-  background: rgba(16, 17, 20, 0.92);
+  background: var(--surface-2);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow);
   max-width: 70%;

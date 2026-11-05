@@ -957,6 +957,53 @@ export async function abrirConfiguracoes(config, info, aoSalvar) {
   const perguntarConversao = criarCheck(t('config.perguntarConversao'), config.PerguntarAntesDeConverter !== false);
   const verificar = criarCheck(t('config.verificarAtualizacoes'), config.VerificarAtualizacoes);
 
+  const estadoApp = info?.atualizacao;
+  const verificarAgora = document.createElement('button');
+  verificarAgora.className = 'btn';
+  verificarAgora.textContent = t('config.verificarAgora');
+  verificarAgora.disabled = estadoApp ? !estadoApp.atualizavel : true;
+  verificarAgora.addEventListener('click', async () => {
+    verificarAgora.disabled = true;
+    ui.toast(t('config.verificando'), 'info', 2500);
+    try {
+      // Uma chamada só: quando existe versão nova ela já vem baixada.
+      const resultado = await call('updates.check', { baixar: true });
+      if (resultado?.disponivel && resultado.baixado) {
+        ui.toast(t('toast.atualizado'), 'ok', 6000);
+        await call('updates.apply');
+        return;
+      }
+      if (resultado?.motivo === 'atualizado') {
+        ui.toast(t('config.semAtualizacao', { versao: resultado.versao }), 'ok', 5000);
+      } else if (!resultado?.disponivel) {
+        ui.toast(t('config.falhaVerificar', { motivo: resultado?.mensagem ?? resultado?.motivo ?? '?' }), 'erro');
+      }
+    } catch (erro) {
+      ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
+    } finally {
+      verificarAgora.disabled = false;
+    }
+  });
+
+  const blocoAtualizacoes = document.createElement('div');
+  blocoAtualizacoes.className = 'campo';
+  const rotuloAtualizacoes = document.createElement('label');
+  rotuloAtualizacoes.textContent = t('config.atualizacoes');
+  const dicaAtualizacoes = document.createElement('span');
+  dicaAtualizacoes.className = 'dica';
+  dicaAtualizacoes.textContent = t('config.versaoAtual', {
+    versao: estadoApp?.versao ?? info?.versao ?? '0.0.0',
+  });
+  const modoAtualizacoes = ui.caixaAviso(
+    estadoApp?.portatil
+      ? t('config.portatil')
+      : estadoApp?.atualizavel
+        ? t('config.instalado')
+        : t('config.naoAtualizavel'),
+    estadoApp?.atualizavel ? 'info' : 'aviso',
+  );
+  blocoAtualizacoes.append(rotuloAtualizacoes, dicaAtualizacoes, modoAtualizacoes, verificarAgora);
+
   const linhaDupla1 = document.createElement('div');
   linhaDupla1.className = 'linha-dupla';
   linhaDupla1.append(
@@ -980,6 +1027,7 @@ export async function abrirConfiguracoes(config, info, aoSalvar) {
     converterColar.label,
     perguntarConversao.label,
     verificar.label,
+    blocoAtualizacoes,
     abrirDados,
   );
 
