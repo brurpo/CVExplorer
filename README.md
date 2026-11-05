@@ -281,10 +281,14 @@ token aleatório na URL):
 - **O fluxo é all-intra** (`-g 1 -bf 0`): todo quadro é keyframe. Isso custa bitrate — que aqui é
   loopback — e compra o que importa: dentro do trecho já baixado o `<video>` pula para qualquer
   instante sem esperar GOP, e um fluxo reaberto mostra o primeiro quadro na hora.
-- **Scrub** primeiro tenta o próprio `<video>`: se o segundo pedido está no trecho já baixado, é
-  seek nativo e instantâneo, sem abrir ffmpeg nenhum. Só quando o ponto está fora do buffer o
-  ffmpeg é reiniciado ali (`-ss` antes de `-i`, busca por keyframe) e o fluxo novo entra no mesmo
-  `<video>`. A barra de tempo usa a duração real do `ffprobe`.
+- **Scrub em tempo real**: arrastar a barra atualiza a imagem a cada movimento. No arquivo que o
+  navegador toca, é seek nativo; no fluxo do ffmpeg, o ponto já baixado é seek nativo no `<video>`
+  (o fluxo é all-intra) e, fora do trecho baixado, aparece um **quadro extraído na hora** por cima
+  do vídeo — um pedido por vez, sempre o mais recente. O fluxo só é reiniciado quando você solta a
+  barra, então nada de reabrir ffmpeg a cada movimento.
+- Soltar a barra reinicia o fluxo no ponto escolhido (`-ss` antes de `-i`, busca por keyframe) e o
+  fluxo novo entra no mesmo `<video>`, sem dar play sozinho. A barra de tempo usa a duração real do
+  `ffprobe`.
 - Controles próprios (play/pause, linha do tempo, tempo, abrir no player externo) porque um fluxo
   contínuo não tem duração de arquivo.
 - O processo do ffmpeg morre ao trocar de arquivo, ao fechar a prévia e ao fechar a janela — e o
@@ -296,7 +300,10 @@ arquivo).
 
 Encoder do fluxo: o primeiro H.264 disponível (`libx264` → `h264_nvenc` → `h264_qsv` →
 `h264_amf` → `h264_mf` → `libopenh264`), cada um com o **seu** preset — passar `-preset speed` para
-NVENC, por exemplo, faz o encoder recusar abrir o fluxo, e aí o app tenta o próximo.
+NVENC, por exemplo, faz o encoder recusar abrir o fluxo, e aí o app tenta o próximo. Antes de
+desistir, ele ainda repete a lista com ajustes conservadores: uma opção que o ffmpeg do usuário não
+aceite (aconteceu com `-rate_control cbr_lowdelay`, que só existe em algumas versões do `h264_mf`)
+degradaria o scrub, não o player inteiro.
 
 ### Por que o arquivo cresce (e como evitar)
 

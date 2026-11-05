@@ -1024,6 +1024,19 @@ public static class Commands
             return Task.FromResult<object?>(new { ok = true });
         });
 
+        // Quadro avulso para o scrub arrastando (arquivo que o navegador não decodifica).
+        Add("media.quadro", async (args, ct) =>
+        {
+            var caminho = Str(args, "caminho");
+            var segundos = Num(args, "tempo", 0);
+            var largura = Int(args, "largura", 960);
+
+            var bytes = await host.Previa.QuadroAsync(caminho, segundos, largura, ct).ConfigureAwait(false);
+            return bytes is null
+                ? new { ok = false }
+                : new { ok = true, mime = "image/jpeg", dados = Convert.ToBase64String(bytes) };
+        }, operacao: true);
+
         // Colar = transcodificar no destino. O original nunca e copiado para o projeto.
         Add("media.paste", async (args, ct) =>
         {

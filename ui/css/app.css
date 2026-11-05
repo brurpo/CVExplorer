@@ -872,6 +872,19 @@ body.arrastando .row, body.arrastando .telha { cursor: grabbing; }
   object-fit: contain;
 }
 
+/* Quadro do scrub: cobre o vídeo enquanto a barra está sendo arrastada fora do buffer. */
+.player-quadro {
+  display: none;
+  width: 100%;
+  max-height: calc(100% - 34px);
+  border-radius: var(--radius-sm);
+  background: #000;
+  object-fit: contain;
+}
+
+.player-quadro.visivel { display: block; }
+.player:has(.player-quadro.visivel) video { display: none; }
+
 .player-controles {
   display: flex;
   align-items: center;

@@ -35,6 +35,9 @@ public sealed class PreviewStreamService
 
     private readonly FfmpegLocator _locator;
     private readonly ConcurrentDictionary<string, PlayerStream> _ativos = new();
+
+    /// <summary>ffmpeg de extração de quadro em curso por arquivo (scrub arrastando).</summary>
+    private readonly ConcurrentDictionary<string, Process> _quadros = new();
     private List<string> _disponiveis = new();
     private bool _procurou;
 
@@ -58,7 +61,7 @@ public sealed class PreviewStreamService
         // Entao tenta um por um ate um deles ficar de pe produzindo o fluxo.
         foreach (var encoder in candidatos)
         {
-            var tentativa = Iniciar(ffmpeg, info, encoder, inicioSegundos);
+            var tentativa = Iniciar(ffmpeg, info, encoder, inicioSegundos, allIntra: true);
             if (tentativa.Erro is not null || tentativa.Processo is null)
             {
                 continue;
@@ -74,6 +77,27 @@ public sealed class PreviewStreamService
             Encerrar(tentativa);
         }
 
+        // Ultimo recurso: os mesmos encoders com o ajuste conservador. Uma opcao que este
+        // ffmpeg nao aceita (aconteceu com -rate_control do h264_mf) derrubaria o player
+        // inteiro; aqui ele volta a tocar, so com o scrub menos imediato.
+        foreach (var encoder in candidatos)
+        {
+            var tentativa = Iniciar(ffmpeg, info, encoder, inicioSegundos, allIntra: false);
+            if (tentativa.Erro is not null || tentativa.Processo is null)
+            {
+                continue;
+            }
+
+            if (Estavel(tentativa.Processo))
+            {
+                Log.Error($"Fluxo aberto com ajustes conservadores ({encoder}).");
+                Adotar(tentativa);
+                return tentativa;
+            }
+
+            Encerrar(tentativa);
+        }
+
         return new PlayerStream { Erro = "Nenhum encoder H.264 conseguiu abrir o fluxo." };
     }
 
@@ -84,7 +108,7 @@ public sealed class PreviewStreamService
         fluxo.Processo.Exited += (_, _) => _ativos.TryRemove(fluxo.Id, out _);
     }
 
-    private static PlayerStream Iniciar(string ffmpeg, MediaInfo info, string encoder, double inicioSegundos)
+    private static PlayerStream Iniciar(string ffmpeg, MediaInfo info, string encoder, double inicioSegundos, bool allIntra)
     {
         var psi = new ProcessStartInfo(ffmpeg)
         {
@@ -94,7 +118,7 @@ public sealed class PreviewStreamService
             CreateNoWindow = true,
         };
 
-        foreach (var arg in Argumentos(info, encoder, inicioSegundos))
+        foreach (var arg in Argumentos(info, encoder, inicioSegundos, allIntra))
         {
             psi.ArgumentList.Add(arg);
         }
@@ -227,7 +251,7 @@ public sealed class PreviewStreamService
         }
     }
 
-    internal static List<string> Argumentos(MediaInfo info, string encoder, double inicioSegundos)
+    internal static List<string> Argumentos(MediaInfo info, string encoder, double inicioSegundos, bool allIntra = true)
     {
         var args = new List<string> { "-hide_banner", "-loglevel", "error", "-nostdin" };
 
@@ -245,12 +269,15 @@ public sealed class PreviewStreamService
             "-sn", "-dn",
             "-vf", $"scale=min({LarguraMaxima}\\,iw):-2",
             "-pix_fmt", "yuv420p",
-            // All-intra: todo quadro e keyframe. O scrub nao espera GOP para achar o ponto.
-            "-g", "1",
-            "-bf", "0",
         });
 
-        args.AddRange(EncoderArgs(encoder));
+        if (allIntra)
+        {
+            // All-intra: todo quadro e keyframe. O scrub nao espera GOP para achar o ponto.
+            args.AddRange(new[] { "-g", "1", "-bf", "0" });
+        }
+
+        args.AddRange(EncoderArgs(encoder, allIntra));
 
         args.AddRange(new[]
         {
@@ -265,10 +292,104 @@ public sealed class PreviewStreamService
         return args;
     }
 
-    private static IEnumerable<string> EncoderArgs(string encoder) => encoder switch
+    /// <summary>
+    /// Um quadro do vídeo no instante pedido, em JPEG. É o que aparece embaixo do cursor
+    /// enquanto a barra de tempo é arrastada em um arquivo que o navegador não decodifica:
+    /// em vez de reiniciar o fluxo a cada movimento (caro e aos trancos), sai um quadro por
+    /// pedido — com no máximo um ffmpeg vivo por arquivo.
+    /// </summary>
+    public async Task<byte[]?> QuadroAsync(string caminho, double segundos, int largura, CancellationToken ct)
     {
-        // All-intra precisa de bitrate: 4M em cada quadro fica borrado. 16M num proxy de
-        // 1280 px de largura já é visualmente limpo e cabe folgado no loopback.
+        var ffmpeg = _locator.Ffmpeg;
+        if (ffmpeg is null)
+        {
+            return null;
+        }
+
+        // Um pedido por vez por arquivo: o anterior é morto, senão o arraste empilha processos.
+        var chave = caminho.ToLowerInvariant();
+        if (_quadros.TryRemove(chave, out var anterior))
+        {
+            Matar(anterior);
+        }
+
+        var psi = new ProcessStartInfo(ffmpeg)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        var cultura = System.Globalization.CultureInfo.InvariantCulture;
+        foreach (var arg in new[]
+        {
+            "-hide_banner", "-loglevel", "error", "-nostdin",
+            // -ss antes do -i: busca por keyframe (num intra-frame é o instante exato).
+            "-ss", Math.Max(0, segundos).ToString("0.###", cultura),
+            "-i", caminho,
+            "-frames:v", "1",
+            "-vf", $"scale=min({largura}\\,iw):-2",
+            "-q:v", "4",
+            "-f", "image2", "-c:v", "mjpeg",
+            "pipe:1",
+        })
+        {
+            psi.ArgumentList.Add(arg);
+        }
+
+        try
+        {
+            using var processo = Process.Start(psi);
+            if (processo is null)
+            {
+                return null;
+            }
+
+            _quadros[chave] = processo;
+            processo.ErrorDataReceived += (_, e) => { _ = e.Data; };
+            processo.BeginErrorReadLine();
+
+            using var memoria = new MemoryStream();
+            await processo.StandardOutput.BaseStream.CopyToAsync(memoria, ct).ConfigureAwait(false);
+            await processo.WaitForExitAsync(ct).ConfigureAwait(false);
+
+            return memoria.Length > 0 ? memoria.ToArray() : null;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Falha ao extrair quadro de {caminho}", ex);
+            return null;
+        }
+        finally
+        {
+            _quadros.TryRemove(chave, out _);
+        }
+    }
+
+    private static void Matar(Process processo)
+    {
+        try
+        {
+            if (!processo.HasExited)
+            {
+                processo.Kill(entireProcessTree: true);
+            }
+        }
+        catch
+        {
+            // processo já saiu
+        }
+    }
+
+    private static IEnumerable<string> EncoderArgs(string encoder, bool allIntra = true) => encoder switch
+    {
+        // All-intra precisa de bitrate: pouco bitrate por quadro fica borrado. Num proxy de
+        // 1280 px de largura, o modo qualidade acerta o olho sem depender de CBR.
         "libx264" => new[]
         {
             "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
@@ -277,11 +398,14 @@ public sealed class PreviewStreamService
         "h264_nvenc" => new[] { "-c:v", "h264_nvenc", "-preset", "p1", "-tune", "ll", "-rc", "constqp", "-qp", "22" },
         "h264_qsv" => new[] { "-c:v", "h264_qsv", "-preset", "veryfast", "-b:v", "16M" },
         "h264_amf" => new[] { "-c:v", "h264_amf", "-quality", "speed", "-b:v", "16M" },
-        "h264_mf" => new[]
-        {
-            // h264_mf nao tem -preset; o que existe e scenario/rate_control.
-            "-c:v", "h264_mf", "-scenario", "live_streaming", "-rate_control", "cbr_lowdelay", "-b:v", "16M",
-        },
+        // h264_mf nao tem -preset; o que existe e scenario/rate_control. Os valores aceitos
+        // aqui sao default, cbr, pc_vbr e quality — qualquer outro derruba o encoder.
+        "h264_mf" => allIntra
+            ? new[]
+            {
+                "-c:v", "h264_mf", "-scenario", "live_streaming", "-rate_control", "quality", "-quality", "75",
+            }
+            : new[] { "-c:v", "h264_mf", "-scenario", "live_streaming", "-rate_control", "cbr", "-b:v", "8M" },
         "libopenh264" => new[] { "-c:v", "libopenh264", "-b:v", "16M" },
         "h264_vulkan" => new[] { "-c:v", "h264_vulkan", "-b:v", "16M" },
         _ => new[] { "-c:v", encoder, "-b:v", "16M" },

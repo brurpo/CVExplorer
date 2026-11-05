@@ -174,13 +174,19 @@ async function mostrarVideo(item, caminho, nome) {
   externo.textContent = '↗';
   externo.addEventListener('click', () => call('fs.open', { caminho }).catch(() => {}));
 
+  // Quadro que aparece no lugar do vídeo enquanto a barra é arrastada.
+  const quadro = document.createElement('img');
+  quadro.className = 'player-quadro';
+  quadro.alt = '';
+
   controles.append(botaoTocar, barra, tempo, externo);
-  container.append(video, controles);
+  container.append(video, quadro, controles);
   corpoEl.replaceChildren(container);
 
   jogador = {
     caminho,
     video,
+    quadro,
     id: null,
     midiaId: null,
     nativo: false,
@@ -215,14 +221,31 @@ async function mostrarVideo(item, caminho, nome) {
     corpoEl.appendChild(botaoExterno(caminho));
   });
 
-  // Direto no arquivo: seek nativo (instantâneo). Pelo ffmpeg: se o ponto já foi baixado,
-  // o próprio <video> pula até ele (o fluxo é all-intra, então é imediato); só quando o
-  // ponto está fora do trecho baixado é que o fluxo é reaberto ali.
-  // Em nenhum dos casos dá "play" sozinho se estava pausado.
+  // Arrastar a barra atualiza o quadro na hora: dentro do trecho já baixado o próprio
+  // <video> pula (o fluxo é all-intra); fora dele, um quadro do ffmpeg aparece por cima
+  // — reiniciar o fluxo a cada movimento seria caro e aos trancos. Ao soltar, o vídeo
+  // assume o ponto de vez.
   barra.addEventListener('input', () => {
     const total = jogador?.duracao || jogador?.video?.duration || 0;
-    if (!total || !jogador?.tempo) return;
-    jogador.tempo.textContent = `${relogio((Number(barra.value) / 1000) * total)} / ${relogio(total)}`;
+    if (!total) return;
+
+    const alvo = (Number(barra.value) / 1000) * total;
+    jogador.arrastando = true;
+    if (jogador.tempo) jogador.tempo.textContent = `${relogio(alvo)} / ${relogio(total)}`;
+
+    if (jogador.nativo) {
+      video.currentTime = alvo;
+      return;
+    }
+
+    const deslocamento = alvo - jogador.inicio;
+    if (deslocamento >= 0 && estaNoBuffer(deslocamento)) {
+      video.currentTime = deslocamento;
+      jogador.quadro.classList.remove('visivel');
+      return;
+    }
+
+    pedirQuadro(alvo);
   });
 
   barra.addEventListener('change', async () => {
@@ -230,9 +253,11 @@ async function mostrarVideo(item, caminho, nome) {
     if (!total) return;
 
     const alvo = (Number(barra.value) / 1000) * total;
+    jogador.arrastando = false;
 
     if (jogador.nativo) {
       video.currentTime = alvo;
+      jogador.quadro.classList.remove('visivel');
       atualizarTempo();
       return;
     }
@@ -240,11 +265,13 @@ async function mostrarVideo(item, caminho, nome) {
     const deslocamento = alvo - jogador.inicio;
     if (deslocamento >= 0 && estaNoBuffer(deslocamento)) {
       video.currentTime = deslocamento;
+      jogador.quadro.classList.remove('visivel');
       atualizarTempo();
       return;
     }
 
     await abrirFluxo(caminho, alvo, !video.paused);
+    jogador.quadro.classList.remove('visivel');
   });
 
   mostrarCarregando(t('preview.iniciando'));
@@ -285,6 +312,42 @@ function estaNoBuffer(segundos) {
   }
 
   return false;
+}
+
+/**
+ * Pede um quadro do instante e mostra por cima do vídeo. Um pedido por vez, sempre o
+ * mais recente: durante o arraste o que importa é o último ponto, não a fila inteira.
+ */
+function pedirQuadro(segundos) {
+  if (!jogador) return;
+
+  jogador.quadroPendente = segundos;
+
+  if (jogador.quadroEmCurso) {
+    return;
+  }
+
+  const buscar = async () => {
+    jogador.quadroEmCurso = true;
+    try {
+      while (jogador && jogador.quadroPendente !== null) {
+        const alvo = jogador.quadroPendente;
+        jogador.quadroPendente = null;
+
+        const resposta = await call('media.quadro', { caminho: jogador.caminho, tempo: alvo, largura: 960 })
+          .catch(() => null);
+
+        if (!jogador || !resposta?.ok) break;
+
+        jogador.quadro.src = `data:${resposta.mime};base64,${resposta.dados}`;
+        jogador.quadro.classList.add('visivel');
+      }
+    } finally {
+      if (jogador) jogador.quadroEmCurso = false;
+    }
+  };
+
+  buscar().catch(() => {});
 }
 
 function relogio(segundos) {  const s = Math.max(0, Math.floor(segundos || 0));
