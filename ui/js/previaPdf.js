@@ -202,22 +202,38 @@ async function desenharCamadas(pagina, viewport) {
     await texto.render();
 
     // Família real de cada linha (ArialMT, TimesNewRomanPSMT…): o texto editado sai com
-    // o parente mais próximo entre as fontes padrão do PDF.
+    // a mesma fonte que a página usa (o Windows desenha Arial quando o PDF não a embute).
     const conteudo = await pagina.getTextContent();
+    const nomes = [];
     const fontePorTexto = new Map();
+
     for (const item of conteudo.items) {
-      if (!item.str || fontePorTexto.has(item.str)) continue;
+      if (!item.str) continue;
+
       let nome = '';
       try {
         nome = pagina.commonObjs.get(item.fontName)?.name ?? '';
       } catch {
         nome = '';
       }
-      if (nome) fontePorTexto.set(item.str, nome);
+
+      nomes.push(nome);
+      if (nome && !fontePorTexto.has(item.str)) fontePorTexto.set(item.str, nome);
     }
 
-    for (const span of estado.camadaTexto.querySelectorAll('span')) {
-      const nome = fontePorTexto.get(span.textContent);
+    const trechos = [...estado.camadaTexto.querySelectorAll('span')];
+
+    // Um span por trecho, na mesma ordem: casa pelo índice (o texto se repete na página).
+    if (trechos.length === nomes.length) {
+      trechos.forEach((span, i) => {
+        if (nomes[i]) span.dataset.fonte = nomes[i];
+      });
+    }
+
+    estado.fontesDaPagina = fontePorTexto;
+
+    for (const span of trechos) {
+      const nome = span.dataset.fonte ?? fontePorTexto.get(span.textContent);
       if (nome) span.dataset.fonte = nome;
     }
   } catch {
@@ -578,6 +594,125 @@ function familiaPadrao(nome = '', negrito = false, italico = false) {
   return 'Helvetica';
 }
 
+/**
+ * Nome de família instalada no Windows correspondente ao que está escrito no PDF.
+ * "ArialMT" → Arial, "TimesNewRomanPSMT" → Times New Roman: é essa fonte que o
+ * navegador usa para desenhar a página quando o PDF não embute o programa.
+ */
+const familiasConhecidas = new Map();
+
+function familiaSistema(nome = '') {
+  const limpo = nome
+    .replace(/,.*$/, '')
+    .replace(/^[A-Z]{6}\+/, '')
+    .replace(/(PS)?MT$/, '')
+    .replace(/-(Bold|Italic|Oblique|BoldItalic|BoldOblique|Regular|Light|Medium|Black)$/i, '')
+    .trim();
+
+  const mapa = {
+    arial: 'Arial',
+    helvetica: 'Arial',
+    timesnewroman: 'Times New Roman',
+    times: 'Times New Roman',
+    couriernew: 'Courier New',
+    courier: 'Courier New',
+    calibri: 'Calibri',
+    cambria: 'Cambria',
+    verdana: 'Verdana',
+    tahoma: 'Tahoma',
+    georgia: 'Georgia',
+    segoeui: 'Segoe UI',
+    consolas: 'Consolas',
+  };
+
+  const chave = limpo.toLowerCase();
+  if (familiasConhecidas.has(chave)) return familiasConhecidas.get(chave);
+
+  let familia = mapa[chave] ?? limpo;
+
+  // Fonte que não existe nesta máquina (nome de catálogo, subconjunto embutido no PDF):
+  // cai numa equivalente instalada, senão o navegador escolheria qualquer coisa.
+  if (!familia || !instalada(familia)) {
+    if (/courier|mono|consol/.test(chave)) familia = 'Courier New';
+    else if (/times|serif|georgia|garamond/.test(chave)) familia = 'Times New Roman';
+    else familia = 'Arial';
+  }
+
+  familiasConhecidas.set(chave, familia);
+  return familia;
+}
+
+function instalada(familia) {
+  try {
+    return document.fonts.check(`12px "${familia}"`);
+  } catch {
+    return false;
+  }
+}
+
+/** Negrito/itálico a partir do nome da fonte que o pdf.js entrega. */
+function estiloDaFonte(nome = '') {
+  const fonte = nome.toLowerCase();
+  return {
+    negrito: /bold|black|heavy|semibold/.test(fonte),
+    italico: /italic|oblique/.test(fonte),
+  };
+}
+
+/**
+ * Desenha o texto novo num canvas com a **mesma fonte** que a página usa e devolve o PNG.
+ * É o jeito de manter o desenho original quando o PDF não embute a fonte (Arial, Times…):
+ * quem desenha é o próprio Windows, com as curvas certas, em vez de uma Helvetica parecida.
+ * O texto sai no corpo original e pode passar da caixa antiga, como num editor de texto.
+ */
+function textoComoImagem(texto, { tamanho, familia, negrito, italico, cor, fundo = null }) {
+  const escala = 6;
+  const px = Math.max(4, tamanho * escala);
+  const peso = negrito ? '700' : '400';
+  const estilo = italico ? 'italic ' : '';
+  const fonte = `${estilo}${peso} ${px}px "${familia}", sans-serif`;
+  const paraCss = (c) => `rgb(${c.map((v) => Math.round(v * 255)).join(',')})`;
+
+  const medidor = document.createElement('canvas').getContext('2d');
+  medidor.font = fonte;
+  const largura = medidor.measureText(texto).width;
+
+  const canvas = document.createElement('canvas');
+  const contexto = canvas.getContext('2d');
+
+  const altura = Math.ceil(px * 1.4);
+  const larguraPx = Math.max(4, Math.ceil(largura) + Math.ceil(px * 0.2));
+  canvas.width = larguraPx;
+  canvas.height = altura;
+
+  // Fundo opaco com a cor da linha: apaga o que estava embaixo (inclusive o resto do
+  // texto original que o campo não pegou) em vez de deixar vazar. A faixa pintada fica
+  // presa à altura da linha para não beliscar a linha de cima.
+  if (fundo) {
+    const linhaBase = Math.round(px * 1.05);
+    contexto.fillStyle = paraCss(fundo);
+    contexto.fillRect(
+      0,
+      Math.max(0, linhaBase - Math.round(px * 0.95)),
+      larguraPx,
+      Math.round(px * 1.22),
+    );
+  }
+
+  contexto.font = fonte;
+  contexto.textBaseline = 'alphabetic';
+  contexto.fillStyle = paraCss(cor);
+  contexto.fillText(texto, Math.ceil(px * 0.1), Math.round(px * 1.05));
+
+  return {
+    png: canvas.toDataURL('image/png'),
+    larguraPdf: larguraPx / escala,
+    alturaPdf: altura / escala,
+    // Distância da base do texto até a base da imagem (para alinhar a linha).
+    descidaPdf: (altura - Math.round(px * 1.05)) / escala,
+  };
+}
+
 /** Cor da tinta e do fundo na área da linha: o texto novo tem de casar com o original. */
 function amostrarCores(span) {
   try {
@@ -652,9 +787,11 @@ function abrirEditorDeTexto(span) {
   entrada.className = 'pdf-edicao';
   entrada.value = span.textContent;
 
-  // O campo se parece com a linha que está sendo editada (mesma cor de tinta e fundo).
+  // O campo se parece com a linha que está sendo editada (mesma cor, fundo, fonte e corpo).
   const cores = amostrarCores(span);
   const paraCss = (cor) => `rgb(${cor.map((v) => Math.round(v * 255)).join(',')})`;
+  const origem = span.dataset.fonte ?? '';
+  const { negrito, italico } = estiloDaFonte(origem);
 
   Object.assign(entrada.style, {
     left: `${retangulo.left - caixa.left}px`,
@@ -662,7 +799,9 @@ function abrirEditorDeTexto(span) {
     width: `${Math.max(48, retangulo.width + 8)}px`,
     height: `${Math.max(12, retangulo.height)}px`,
     fontSize: estilo.fontSize,
-    fontFamily: estilo.fontFamily,
+    fontFamily: `"${familiaSistema(origem)}", ${estilo.fontFamily}`,
+    fontWeight: negrito ? '700' : estilo.fontWeight,
+    fontStyle: italico ? 'italic' : estilo.fontStyle,
     color: paraCss(cores.texto),
     background: paraCss(cores.fundo),
   });
@@ -709,7 +848,8 @@ function registrarEdicaoTexto(span, texto, retangulo, caixa, tamanhoCss) {
   const [x2, y2] = estado.viewport.convertToPdfPoint(esquerda + retangulo.width, topo + retangulo.height);
 
   const cores = amostrarCores(span);
-  const fonte = span.dataset.fonte ?? '';
+  const fonte = span.dataset.fonte || estado.fontesDaPagina?.get(span.textContent) || '';
+  const { negrito, italico } = estiloDaFonte(fonte);
 
   estado.edicoes.push({
     pagina: estado.pagina,
@@ -720,7 +860,10 @@ function registrarEdicaoTexto(span, texto, retangulo, caixa, tamanhoCss) {
     largura: Math.max(2, Math.abs(x2 - x1)),
     altura: Math.max(2, Math.abs(y2 - y1)),
     tamanho: Math.max(2, parseFloat(tamanhoCss) / (estado.escalaAtual || 1)),
-    fonte: familiaPadrao(fonte, span.dataset.negrito === '1', span.dataset.italico === '1'),
+    fonte: familiaPadrao(fonte, negrito, italico),
+    familia: familiaSistema(fonte),
+    negrito,
+    italico,
     fundo: cores.fundo,
     cor: cores.texto,
     texto,
@@ -763,6 +906,9 @@ function mostrarEdicoesDeTexto() {
       color: paraCss(cor),
       // Fundo opaco igual ao do salvamento: cobre o texto antigo também na prévia.
       background: paraCss(fundo),
+      fontFamily: `"${edicao.familia ?? 'Arial'}", sans-serif`,
+      fontWeight: edicao.negrito ? '700' : '400',
+      fontStyle: edicao.italico ? 'italic' : 'normal',
     });
 
     // Esconde o texto original que está embaixo (por posição, não por índice: o
@@ -814,6 +960,33 @@ async function aplicarEdicoesDeTexto(documento, lib) {
 
     if (!edicao.texto.trim()) continue;
 
+    // A base do texto original fica a ~18% da altura do trecho, contada de baixo.
+    const base = edicao.y + edicao.altura * 0.18;
+
+    try {
+      // Desenha com a fonte do sistema que a página realmente usa (Arial, Times…): o PDF
+      // original não embute o programa da fonte, então reaproveitamos o desenho do Windows.
+      const imagem = textoComoImagem(edicao.texto, {
+        tamanho: edicao.tamanho,
+        familia: edicao.familia ?? 'Arial',
+        negrito: edicao.negrito === true,
+        italico: edicao.italico === true,
+        cor,
+        fundo: edicao.fundo ?? [1, 1, 1],
+      });
+
+      const png = await documento.embedPng(imagem.png);
+      pagina.drawImage(png, {
+        x: edicao.x,
+        y: base - imagem.descidaPdf,
+        width: imagem.larguraPdf,
+        height: imagem.alturaPdf,
+      });
+      continue;
+    } catch {
+      // Sem canvas/PNG disponível: cai para a fonte padrão mais parecida.
+    }
+
     const fonte = await documento.embedFont(lib.StandardFonts[edicao.fonte] ?? lib.StandardFonts.Helvetica);
 
     let tamanho = edicao.tamanho;
@@ -825,7 +998,7 @@ async function aplicarEdicoesDeTexto(documento, lib) {
 
     pagina.drawText(edicao.texto, {
       x: edicao.x,
-      y: edicao.y + edicao.altura * 0.18,
+      y: base,
       size: tamanho,
       font: fonte,
       color: lib.rgb(cor[0], cor[1], cor[2]),
@@ -903,11 +1076,35 @@ async function inserirTextoDaPosicao(evento) {
 
 async function desenharTexto(texto, ponto, pagina) {
   await editar(async (documento, lib) => {
+    const alvo = documento.getPage(pagina - 1);
+    const tamanho = 12;
+
+    try {
+      const imagem = textoComoImagem(texto, {
+        tamanho,
+        familia: 'Arial',
+        negrito: false,
+        italico: false,
+        cor: [0, 0, 0],
+      });
+
+      const png = await documento.embedPng(imagem.png);
+      alvo.drawImage(png, {
+        x: ponto[0],
+        y: ponto[1] - imagem.descidaPdf,
+        width: imagem.larguraPdf,
+        height: imagem.alturaPdf,
+      });
+      return;
+    } catch {
+      // sem PNG: segue com a fonte padrão
+    }
+
     const fonte = await documento.embedFont(lib.StandardFonts.Helvetica);
-    documento.getPage(pagina - 1).drawText(texto, {
+    alvo.drawText(texto, {
       x: ponto[0],
       y: ponto[1],
-      size: 12,
+      size: tamanho,
       font: fonte,
       color: lib.rgb(0, 0, 0),
     });

@@ -191,8 +191,12 @@ No estilo do Explorer, sem lista de projetos:
   desenho, com a variável `--scale-factor` que o pdf.js espera — sem ela a seleção pega a linha
   errada; `Ctrl+C` e **Copiar texto** no botão direito) e **duplo clique numa linha edita o texto no
   lugar**. A substituição mantém o desenho do documento: o fundo da própria linha cobre o texto
-  antigo (cor amostrada do desenho) e o texto novo sai com a **mesma família** (Arial→Helvetica,
-  Times→Times-Roman, Courier→Courier, com negrito/itálico), o **mesmo corpo** e a **mesma cor**.
+  antigo (cor amostrada do desenho) e o texto novo sai com a **mesma fonte, o mesmo corpo e a mesma
+  cor** do original. Como os PDFs de escritório normalmente **não embutem o programa da fonte**
+  (só o nome: `ArialMT`, `TimesNewRomanPSMT`…), o texto novo é desenhado num canvas com a fonte
+  **instalada no sistema** que a página usa e entra no PDF como imagem em 6× — mesmas curvas, mesmo
+  espaçamento, em vez de uma Helvetica parecida. Fonte que não existe nesta máquina cai na
+  equivalente mais próxima (Arial, Times New Roman ou Courier New).
   Dá também para **Adicionar texto…** (clique define a posição) — útil em contrato
   escaneado/assinado — e os **campos de formulário** ficam editáveis na própria página. As
   operações de página ficam no menu
