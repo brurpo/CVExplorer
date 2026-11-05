@@ -7,7 +7,7 @@
     <AssemblyName>CvExplorer</AssemblyName>
     <RootNamespace>CVExplorer.Host</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>0.1.17</Version>
+    <Version>0.1.18</Version>
     <SatelliteResourceLanguages>pt-BR</SatelliteResourceLanguages>
     <InvariantGlobalization>false</InvariantGlobalization>
     <!-- WebView2 traz assemblies WPF e WinForms; o conflito de WindowsBase e inofensivo aqui. -->

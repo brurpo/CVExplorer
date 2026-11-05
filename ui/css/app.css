@@ -1604,12 +1604,18 @@ body[data-modo="previa"] {
   padding: 16px;
   overflow: auto;
   background: #121316;
+  /* A interface toda é `user-select: none`; a página do PDF precisa reabrir isso. */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 .pdf-pagina-caixa {
   position: relative;
   border-radius: 2px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .pdf-canvas {
@@ -1656,12 +1662,15 @@ body[data-modo="previa"] {
   user-select: none;
 }
 
-/* Camada de anotações: é onde os campos de formulário ficam editáveis. */
+/* Camada de anotações: é onde os campos de formulário ficam editáveis.
+   Ela cobre a página inteira, então não pode engolir o mouse: só os campos recebem
+   clique — o resto do arraste é seleção de texto. */
 .pdf-pagina-caixa .annotationLayer {
   position: absolute;
   inset: 0;
   overflow: hidden;
   z-index: 3;
+  pointer-events: none;
 }
 
 .pdf-pagina-caixa .annotationLayer section {
@@ -1711,6 +1720,7 @@ body[data-modo="previa"] {
   color: #0b2a55;
   font-family: inherit;
   line-height: 1.1;
+  pointer-events: auto;
 }
 
 .pdf-campo:focus {
@@ -1721,6 +1731,33 @@ body[data-modo="previa"] {
 .pdf-campo-marca {
   padding: 0;
   accent-color: var(--accent);
+}
+
+/* Campo de edição aberto em cima da linha do PDF (duplo clique). */
+.pdf-edicao {
+  position: absolute;
+  z-index: 5;
+  margin: 0;
+  padding: 0 2px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: #fff;
+  color: #0b2a55;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(120, 175, 255, 0.35);
+}
+
+/* Texto substituído enquanto o PDF ainda não foi salvo. */
+.pdf-texto-editado {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  color: #111;
+  background: rgba(120, 175, 255, 0.18);
+  white-space: pre;
+  pointer-events: none;
 }
 
 /* A barra do PDF tem muitos botões: aperta o espaçamento para caber numa linha. */

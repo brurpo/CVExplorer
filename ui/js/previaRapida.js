@@ -158,7 +158,19 @@ function prepararBarra() {
   if (hdri) hdri.hidden = !eh3d;
   if (campoExposicao) campoExposicao.hidden = !eh3d && !ehImagem;
   if (exposicao) exposicao.value = String(Math.round(preferencias.exposicao * 100));
-  if (dica) dica.style.display = eh3d ? '' : 'none';
+
+  if (dica) {
+    dica.dataset.original ??= dica.textContent;
+    if (eh3d) {
+      dica.textContent = dica.dataset.original;
+      dica.style.display = '';
+    } else if (atual.ext === 'pdf') {
+      dica.textContent = t('pdf.dica');
+      dica.style.display = '';
+    } else {
+      dica.style.display = 'none';
+    }
+  }
 
   acoes.hidden = !eh3d && !ehImagem;
 

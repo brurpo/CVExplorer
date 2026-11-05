@@ -186,14 +186,16 @@ No estilo do Explorer, sem lista de projetos:
   em vez de abrir outra janela.
 - **PDF na mesma janela do espaço**: o `Espaço` num `.pdf` abre o documento com **pdf.js** —
   `◀ 3 / 12 ▶`, **zoom com o nível à mostra** (`− 135% +`), **Ajustar** (largura da janela) e
-  **Original** (100%) — e o texto da página fica **selecionável e copiável** (camada de texto do
-  pdf.js por cima do desenho; `Ctrl+C` funciona e o botão direito tem **Copiar texto**).
-  Os **campos de formulário** do PDF são editáveis na própria página: digitar marca o documento como
-  alterado e o valor entra no arquivo ao salvar. As operações de página ficam no menu **Páginas** (e
-  no botão direito): **Girar**, mover a página para a esquerda/direita, **Excluir** e **Extrair**
-  (gera `nome - página N.pdf` ao lado). **Salvar** grava por cima deixando `nome.pdf.bak`;
-  **Descartar** volta ao arquivo original. Quem aplica as mudanças é o **pdf-lib**; não é reescrita
-  de texto (reflow), e sim operações de página e valores de formulário.
+  **Original** (100%). O texto da página é **selecionável e copiável** (camada `TextLayer` do pdf.js
+  por cima do desenho; `Ctrl+C` e **Copiar texto** no botão direito) e **duplo clique numa linha
+  edita o texto no lugar**: ao salvar, o pdf-lib pinta a área original de branco e escreve o texto
+  novo na mesma posição, ajustando o corpo se o texto ficar mais largo. Dá também para **Adicionar
+  texto…** (clique define a posição) — útil em contrato escaneado/assinado — e os **campos de
+  formulário** ficam editáveis na própria página. As operações de página ficam no menu
+  **Páginas** (e no botão direito): **Girar**, mover a página para a esquerda/direita, **Excluir** e
+  **Extrair** (gera `nome - página N.pdf` ao lado). **Salvar** grava por cima deixando
+  `nome.pdf.bak`; **Descartar** volta ao arquivo original. Não é reescrita de texto (reflow): é
+  conteúdo novo, páginas e valores de formulário.
 - **Ambiente e tone mapping na prévia 3D**: presets de HDRI **gerados na hora** (Estúdio, Pôr do sol,
   Noite, Neve — nada é baixado), **Carregar HDRI…** para um `.hdr`/`.exr` do usuário e o botão
   **Ver como ambiente**, que abre a imagem atual como panorama lat-long (equiretangular) com a câmera

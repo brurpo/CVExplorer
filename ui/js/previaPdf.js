@@ -103,6 +103,7 @@ export async function abrir(caminho) {
     camadaTexto,
     camadaAnotacoes,
     valores: new Map(),
+    edicoes: [],
   };
 
   ligarBarra();
@@ -163,9 +164,14 @@ async function desenhar() {
   contexto.fillStyle = '#ffffff';
   contexto.fillRect(0, 0, viewport.width, viewport.height);
 
+  // Guarda o viewport do desenho atual (converter clique em coordenada do PDF).
+  estado.viewport = viewport;
+
   await pagina.render({ canvasContext: contexto, viewport }).promise;
 
   await desenharCamadas(pagina, viewport);
+  ligarEdicaoDeTexto();
+  mostrarEdicoesDeTexto();
   atualizarBarra();
 }
 
@@ -322,6 +328,8 @@ async function editar(acao, paginaDepois) {
   const documento = await lib.PDFDocument.load(estado.bytes, { updateMetadata: false });
 
   aplicarCampos(documento);
+  await aplicarEdicoesDeTexto(documento, lib);
+  estado.edicoes = [];
   await acao(documento, lib);
 
   estado.bytes = await documento.save();
@@ -385,12 +393,14 @@ async function extrair() {
 async function salvar() {
   if (!estado?.sujo) return;
 
-  // Campos preenchidos na tela entram no arquivo; sem isso o que foi digitado se perde.
-  if (estado.valores.size > 0) {
+  // Campos preenchidos e textos substituídos entram no arquivo antes de gravar.
+  if (estado.valores.size > 0 || estado.edicoes.length > 0) {
     const lib = await carregarPdfLib();
     const documento = await lib.PDFDocument.load(estado.bytes, { updateMetadata: false });
     aplicarCampos(documento);
+    await aplicarEdicoesDeTexto(documento, lib);
     estado.bytes = await documento.save();
+    estado.edicoes = [];
   }
 
   const resposta = await call('pdf.salvar', {
@@ -414,6 +424,8 @@ async function descartar() {
 
   estado.bytes = estado.original;
   estado.sujo = false;
+  estado.edicoes = [];
+  estado.valores.clear();
   await recarregar(estado.pagina);
 }
 
@@ -478,9 +490,189 @@ function ligarBarra() {
     abrirMenuPaginas(null, evento.clientX, evento.clientY);
   });
 
+  // Clique na página: só interessa quando o texto está esperando a posição.
+  document.getElementById('previa-rapida-corpo')?.addEventListener('click', (evento) => {
+    if (!estado?.aguardandoTexto) return;
+    inserirTextoDaPosicao(evento);
+  });
+
   document.addEventListener('keydown', atalhos);
   ligada = true;
   atualizarBarra();
+}
+
+/**
+ * Editar texto que já existe na página: duplo clique sobre a linha abre o campo no lugar,
+ * e o que for confirmado vira uma **substituição** — ao salvar, o pdf-lib pinta a área
+ * original de branco e escreve o texto novo por cima (mesma posição e corpo). Não é
+ * reescrita do conteúdo do PDF: é o jeito que funciona em contrato assinado/escaneado.
+ */
+function ligarEdicaoDeTexto() {
+  if (!estado || estado.edicaoDeTexto) return;
+
+  estado.camadaTexto.addEventListener('dblclick', (evento) => {
+    const alvo = evento.target;
+    const span = alvo?.tagName === 'SPAN' ? alvo : null;
+    if (!span || !span.textContent.trim()) return;
+
+    evento.preventDefault();
+    evento.stopPropagation();
+    abrirEditorDeTexto(span);
+  });
+
+  estado.edicaoDeTexto = true;
+}
+
+function abrirEditorDeTexto(span) {
+  if (!estado) return;
+
+  const caixa = estado.caixa.getBoundingClientRect();
+  const retangulo = span.getBoundingClientRect();
+  const estilo = getComputedStyle(span);
+
+  const entrada = document.createElement('input');
+  entrada.className = 'pdf-edicao';
+  entrada.value = span.textContent;
+
+  Object.assign(entrada.style, {
+    left: `${retangulo.left - caixa.left}px`,
+    top: `${retangulo.top - caixa.top}px`,
+    width: `${Math.max(48, retangulo.width + 8)}px`,
+    height: `${Math.max(12, retangulo.height)}px`,
+    fontSize: estilo.fontSize,
+    fontFamily: estilo.fontFamily,
+  });
+
+  estado.caixa.appendChild(entrada);
+  entrada.focus();
+  entrada.select();
+
+  let concluido = false;
+  const terminar = (aplicar) => {
+    if (concluido) return;
+    concluido = true;
+
+    const texto = entrada.value;
+    entrada.remove();
+
+    if (!aplicar || texto === span.textContent) return;
+    registrarEdicaoTexto(span, texto, retangulo, caixa, estilo.fontSize);
+  };
+
+  entrada.addEventListener('keydown', (evento) => {
+    if (evento.key === 'Enter') {
+      evento.preventDefault();
+      evento.stopPropagation();
+      terminar(true);
+    } else if (evento.key === 'Escape') {
+      evento.preventDefault();
+      evento.stopPropagation();
+      terminar(false);
+    }
+  });
+  entrada.addEventListener('blur', () => terminar(true));
+  entrada.addEventListener('click', (evento) => evento.stopPropagation());
+}
+
+/** Guarda a substituição em coordenadas do PDF (independe de zoom e de página). */
+function registrarEdicaoTexto(span, texto, retangulo, caixa, tamanhoCss) {
+  if (!estado?.viewport) return;
+
+  const esquerda = retangulo.left - caixa.left;
+  const topo = retangulo.top - caixa.top;
+
+  const [x1, y1] = estado.viewport.convertToPdfPoint(esquerda, topo);
+  const [x2, y2] = estado.viewport.convertToPdfPoint(esquerda + retangulo.width, topo + retangulo.height);
+
+  estado.edicoes.push({
+    pagina: estado.pagina,
+    original: span.textContent,
+    indice: [...estado.camadaTexto.querySelectorAll('span')].indexOf(span),
+    x: Math.min(x1, x2),
+    y: Math.min(y1, y2),
+    largura: Math.max(2, Math.abs(x2 - x1)),
+    altura: Math.max(2, Math.abs(y2 - y1)),
+    tamanho: Math.max(2, parseFloat(tamanhoCss) / (estado.escalaAtual || 1)),
+    texto,
+  });
+
+  estado.sujo = true;
+  atualizarBarra();
+  mostrarEdicoesDeTexto();
+}
+
+/** Redesenha as substituições por cima do desenho (depois de cada render/zoom). */
+function mostrarEdicoesDeTexto() {
+  if (!estado?.viewport) return;
+
+  estado.camadaTexto.querySelectorAll('.pdf-texto-editado').forEach((el) => el.remove());
+  estado.camadaTexto.querySelectorAll('span').forEach((span) => { span.style.visibility = ''; });
+
+  const daPagina = estado.edicoes.filter((edicao) => edicao.pagina === estado.pagina);
+  if (daPagina.length === 0) return;
+
+  const caixa = estado.caixa.getBoundingClientRect();
+
+  for (const edicao of daPagina) {
+    const [x1, y1] = estado.viewport.convertToViewportPoint(edicao.x, edicao.y);
+    const [x2, y2] = estado.viewport.convertToViewportPoint(edicao.x + edicao.largura, edicao.y + edicao.altura);
+
+    const marcador = document.createElement('div');
+    marcador.className = 'pdf-texto-editado';
+    marcador.textContent = edicao.texto;
+    Object.assign(marcador.style, {
+      left: `${Math.min(x1, x2)}px`,
+      top: `${Math.min(y1, y2)}px`,
+      minWidth: `${Math.abs(x2 - x1)}px`,
+      height: `${Math.abs(y2 - y1)}px`,
+      fontSize: `${edicao.tamanho * (estado.escalaAtual || 1)}px`,
+    });
+
+    // Esconde o texto original que ficou embaixo (o overlay cobre, mas some do clique).
+    const span = estado.camadaTexto.querySelectorAll('span')[edicao.indice];
+    if (span && span.textContent === edicao.original) span.style.visibility = 'hidden';
+
+    estado.camadaTexto.appendChild(marcador);
+  }
+
+  // Referência usada só para depuração/posição relativa.
+  void caixa;
+}
+
+/** Leva as substituições para dentro do PDF (branco por cima + texto novo). */
+async function aplicarEdicoesDeTexto(documento, lib) {
+  if (!estado || estado.edicoes.length === 0) return;
+
+  const fonte = await documento.embedFont(lib.StandardFonts.Helvetica);
+
+  for (const edicao of estado.edicoes) {
+    const pagina = documento.getPage(edicao.pagina - 1);
+    if (!pagina) continue;
+
+    pagina.drawRectangle({
+      x: edicao.x - 1,
+      y: edicao.y - 1,
+      width: edicao.largura + 2,
+      height: edicao.altura + 2,
+      color: lib.rgb(1, 1, 1),
+    });
+
+    if (!edicao.texto.trim()) continue;
+
+    let tamanho = edicao.tamanho;
+    const largura = fonte.widthOfTextAtSize(edicao.texto, tamanho);
+    if (largura > edicao.largura) {
+      tamanho = Math.max(2, tamanho * (edicao.largura / largura));
+    }
+
+    pagina.drawText(edicao.texto, {
+      x: edicao.x,
+      y: edicao.y + edicao.altura * 0.18,
+      size: tamanho,
+      font: fonte,
+      color: lib.rgb(0, 0, 0),
+    });
+  }
 }
 
 /** Menu das operações de página — vale para o botão da barra e para o botão direito. */
@@ -493,6 +685,7 @@ function abrirMenuPaginas(botao, x, y) {
   const itens = [
     { rotulo: t('pdf.copiar'), atalho: 'Ctrl+C', desabilitado: !selecao, acao: () => copiarTexto(selecao) },
     { separador: true },
+    { rotulo: t('pdf.adicionarTexto'), acao: () => pedirPosicaoDoTexto() },
     { rotulo: t('pdf.girar'), acao: () => girar() },
     { rotulo: t('pdf.moverEsquerda'), desabilitado: estado.pagina <= 1, acao: () => mover(-1) },
     { rotulo: t('pdf.moverDireita'), desabilitado: estado.pagina >= estado.total, acao: () => mover(1) },
@@ -502,6 +695,67 @@ function abrirMenuPaginas(botao, x, y) {
   ];
 
   ui.menuContexto(x ?? base?.left ?? 0, y ?? (base?.bottom ?? 0) + 4, itens);
+}
+
+/**
+ * Escrever por cima da página: o clique define a posição (convertida para a coordenada do
+ * PDF) e o texto entra como conteúdo novo via pdf-lib — serve para PDF escaneado/assinado,
+ * que não tem campo nenhum para preencher.
+ */
+function pedirPosicaoDoTexto() {
+  if (!estado) return;
+
+  estado.aguardandoTexto = true;
+  estado.area.style.cursor = 'crosshair';
+  ui.toast(t('pdf.adicionarTextoDica'), 'info', 4000);
+}
+
+async function inserirTextoDaPosicao(evento) {
+  if (!estado?.aguardandoTexto) return;
+
+  estado.aguardandoTexto = false;
+  estado.area.style.cursor = '';
+
+  const caixa = estado.caixa.getBoundingClientRect();
+  const ponto = estado.viewport.convertToPdfPoint(evento.clientX - caixa.left, evento.clientY - caixa.top);
+  const pagina = estado.pagina;
+
+  const entrada = ui.input({ placeholder: t('pdf.adicionarTextoPlaceholder') });
+  const rotulo = ui.campo(t('pdf.adicionarTextoRotulo'), entrada);
+
+  ui.modal({
+    titulo: t('pdf.adicionarTexto'),
+    corpo: rotulo,
+    botoes: [
+      { texto: t('dialogo.cancelar') },
+      {
+        texto: t('dialogo.aplicar'),
+        tipo: 'primario',
+        acao: (fechar) => fechar(entrada.value),
+      },
+    ],
+    aoFechar: (texto) => {
+      if (typeof texto !== 'string' || !texto.trim()) return;
+      desenharTexto(texto, ponto, pagina).catch((erro) => {
+        ui.toast(t('pdf.erro', { motivo: erro?.message ?? '—' }), 'erro', 6000);
+      });
+    },
+  });
+}
+
+async function desenharTexto(texto, ponto, pagina) {
+  await editar(async (documento, lib) => {
+    const fonte = await documento.embedFont(lib.StandardFonts.Helvetica);
+    documento.getPage(pagina - 1).drawText(texto, {
+      x: ponto[0],
+      y: ponto[1],
+      size: 12,
+      font: fonte,
+      color: lib.rgb(0, 0, 0),
+    });
+  }, pagina);
+
+  ui.toast(t('pdf.textoInserido'), 'ok', 4000);
 }
 
 async function copiarTexto(texto) {
