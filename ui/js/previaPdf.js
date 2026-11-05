@@ -751,18 +751,39 @@ function mostrarEdicoesDeTexto() {
     marcador.className = 'pdf-texto-editado';
     marcador.textContent = edicao.texto;
     const cor = edicao.cor ?? [0, 0, 0];
+    const fundo = edicao.fundo ?? [1, 1, 1];
+    const paraCss = (c) => `rgb(${c.map((v) => Math.round(v * 255)).join(',')})`;
+
     Object.assign(marcador.style, {
       left: `${Math.min(x1, x2)}px`,
       top: `${Math.min(y1, y2)}px`,
       minWidth: `${Math.abs(x2 - x1)}px`,
       height: `${Math.abs(y2 - y1)}px`,
       fontSize: `${edicao.tamanho * (estado.escalaAtual || 1)}px`,
-      color: `rgb(${cor.map((v) => Math.round(v * 255)).join(',')})`,
+      color: paraCss(cor),
+      // Fundo opaco igual ao do salvamento: cobre o texto antigo também na prévia.
+      background: paraCss(fundo),
     });
 
-    // Esconde o texto original que ficou embaixo (o overlay cobre, mas some do clique).
-    const span = estado.camadaTexto.querySelectorAll('span')[edicao.indice];
-    if (span && span.textContent === edicao.original) span.style.visibility = 'hidden';
+    // Esconde o texto original que está embaixo (por posição, não por índice: o
+    // TextLayer recria os spans a cada desenho).
+    const area = {
+      esquerda: Math.min(x1, x2),
+      topo: Math.min(y1, y2),
+      direita: Math.max(x1, x2),
+      base: Math.max(y1, y2),
+    };
+
+    for (const span of estado.camadaTexto.querySelectorAll('span')) {
+      const r = span.getBoundingClientRect();
+      const esquerda = r.left - caixa.left;
+      const topo = r.top - caixa.top;
+
+      const sobrepoe = esquerda < area.direita && esquerda + r.width > area.esquerda
+        && topo < area.base && topo + r.height > area.topo;
+
+      if (sobrepoe) span.style.visibility = 'hidden';
+    }
 
     estado.camadaTexto.appendChild(marcador);
   }
