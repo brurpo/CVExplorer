@@ -95,8 +95,9 @@ No estilo do Explorer, sem lista de projetos:
 - **Este Computador**: unidades com **letra**, rótulo, espaço livre, **ícone** (disco empilhado em
   **amarelo** para local, globo em azul para rede) e o **tipo** (`Rede` para mapeadas/UNC, `Local`
   para fixas). Pastas adicionadas em *Raízes* aparecem como pastas. Antes delas vêm as pastas do
-  perfil com ícone próprio: **Pessoal**, **Área de Trabalho**, **Documentos**, **Downloads**,
-  **Imagens** e **Vídeos**.
+  perfil com ícone e **cor próprios** (nenhuma amarela, que é das pastas, nem azul, que é seleção):
+  **Pessoal** violeta, **Área de Trabalho** verde, **Documentos** terracota, **Downloads** turquesa,
+  **Imagens** rosa e **Vídeos** oliva.
 - Ícone de pasta em **amarelo**: com o acervo em tons de cinza, a pasta desaparecia no meio das
   miniaturas coloridas.
 
@@ -136,7 +137,7 @@ No estilo do Explorer, sem lista de projetos:
   seleção atual). A caixa respeita a área visível e ignora o que está fora dela.
 - **Barra de endereço editável**: clique duplo no caminho (ou `Ctrl+L`) para digitar, colar ou
   copiar um caminho; `Enter` vai para a pasta, `Esc` cancela. Clicar nas migalhas também navega.
-- **Type-ahead**: comece a digitar e a seleção pula para o item que combina (com indicador na tela).
+- **Type-ahead**: comece a digitar e a seleção pula para o item que combina (com indicador na tela) — e a grade/lista **rola até ele**, mesmo com milhares de itens.
 - **Colunas ordenáveis**: clique em *Nome*, *Tipo*, *Tamanho*, *Modificado* ou *Criado em* para
   ordenar; clique de novo inverte. A escolha é lembrada.
 - **Colunas redimensionáveis**: as **cinco** colunas têm alça — arraste a divisória no cabeçalho

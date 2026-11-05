@@ -1905,9 +1905,41 @@ function selecionarIndice(indice) {
   state.selecao.add(caminho);
   state.ancora = indice;
 
+  rolarAteIndice(indice, itens, caminho);
   aplicarSelecao();
   preview.mostrar(selecionados()).catch(() => {});
+}
 
-  area.querySelector(`[data-caminho="${CSS.escape(caminho)}"]`)
-    ?.scrollIntoView({ block: 'nearest' });
+/**
+ * Traz o item para a área visível. A grade é virtualizada — o item pode nem existir no
+ * DOM —, então a posição sai do índice; depois de rolar, o desenho é refeito para a
+ * telha existir e o scrollIntoView só ajusta o resto.
+ */
+function rolarAteIndice(indice, itens, caminho) {
+  const margem = 8;
+  let topo = 0;
+  let altura = 0;
+
+  if (state.visao === 'grade') {
+    const disponivel = Math.max(120, area.clientWidth - PAD * 2);
+    const larguraMinima = Math.max(96, state.grade);
+    const colunas = Math.max(1, Math.floor((disponivel + GAP) / (larguraMinima + GAP)));
+    const larguraTelha = Math.max(72, (disponivel - (colunas - 1) * GAP) / colunas);
+    const alturaLinha = larguraTelha + 38 + GAP;
+
+    topo = PAD + Math.floor(indice / colunas) * alturaLinha;
+    altura = alturaLinha;
+  } else {
+    topo = PAD + indice * 28;
+    altura = 28;
+  }
+
+  if (topo < area.scrollTop + margem) {
+    area.scrollTop = Math.max(0, topo - margem);
+  } else if (topo + altura > area.scrollTop + area.clientHeight - margem) {
+    area.scrollTop = topo + altura - area.clientHeight + margem;
+  }
+
+  desenhar();
+  area.querySelector(`[data-caminho="${CSS.escape(caminho)}"]`)?.scrollIntoView({ block: 'nearest' });
 }

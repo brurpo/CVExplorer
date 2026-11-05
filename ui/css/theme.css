@@ -22,6 +22,15 @@
   /* amarelo das pastas e das unidades locais */
   --pasta: #f2c95c;
 
+  /* Cores próprias das pastas do perfil: nenhuma amarela (é das pastas) nem azul
+     (é seleção). Tons dessaturados, distintos entre si de relance. */
+  --conta-pessoal: #b08ed0;
+  --conta-desktop: #7fbf94;
+  --conta-documentos: #cf9a7d;
+  --conta-downloads: #6fbfb8;
+  --conta-imagens: #d092b8;
+  --conta-videos: #8fae74;
+
   --danger: #e5484d;
   --danger-dim: rgba(229, 72, 77, 0.14);
   --warning: #f5a524;
@@ -79,6 +88,13 @@ html[data-tema="claro"] {
   --accent-dim-2: rgba(43, 124, 192, 0.24);
 
   --pasta: #dda92a;
+
+  --conta-pessoal: #7d5ba6;
+  --conta-desktop: #2f7d52;
+  --conta-documentos: #a35a3a;
+  --conta-downloads: #1f7d78;
+  --conta-imagens: #a2517f;
+  --conta-videos: #5a7233;
 
   --danger: #c0393d;
   --danger-dim: rgba(192, 57, 61, 0.12);
