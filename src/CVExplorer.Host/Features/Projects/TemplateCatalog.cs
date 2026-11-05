@@ -181,6 +181,33 @@ public static class TemplateCatalog
         return result;
     }
 
+    /// <summary>
+    /// Pastas do modelo que fazem sentido criar dentro de uma pasta.
+    /// Na raiz de um projeto são as pastas de primeiro nível (PACOTE_GRAFICO, CHAMADAS,
+    /// ABERTURA, EDITORIA...); nas demais, casa pelo nome da pasta ou, quando ela é um
+    /// quadro, pelos filhos do token <see cref="QuadroToken"/>.
+    /// </summary>
+    public static List<TemplateNode> FilhosPara(
+        List<TemplateNode> modelo, string nomePasta, string? nomePai, bool raizDeProjeto)
+    {
+        if (raizDeProjeto)
+        {
+            return modelo.Where(n => !string.IsNullOrWhiteSpace(n.Nome)).ToList();
+        }
+
+        var todos = AllNodes(modelo);
+        var no = todos.FirstOrDefault(n => n.Nome.Equals(nomePasta, StringComparison.OrdinalIgnoreCase));
+
+        if (no is null && nomePai is not null)
+        {
+            var noPai = todos.FirstOrDefault(n => n.Nome.Equals(nomePai, StringComparison.OrdinalIgnoreCase));
+            no = noPai?.Filhos.FirstOrDefault(f =>
+                f.Nome.Equals(QuadroToken, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return no?.Filhos ?? new List<TemplateNode>();
+    }
+
     public static List<TemplateNode> LoadOrSeed(string filePath)
     {
         try

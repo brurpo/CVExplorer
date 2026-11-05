@@ -409,7 +409,8 @@ public static class Commands
         });
 
         // Pastas do modelo que fazem sentido dentro desta pasta (menu "Novo").
-        // Casa pelo nome da pasta ou, quando ela é um quadro, pelo token {QUADRO}.
+        // Na raiz de um projeto (tem .cvproj) são as pastas de primeiro nível;
+        // nas demais casa pelo nome da pasta ou, quando ela é um quadro, pelo token {QUADRO}.
         Add("project.filhosModelo", (args, _) =>
         {
             var caminho = Str(args, "caminho");
@@ -418,21 +419,16 @@ public static class Commands
                 return Task.FromResult<object?>(new { filhos = Array.Empty<object>() });
             }
 
-            var nos = TemplateCatalog.AllNodes(host.Template);
-            var nome = Path.GetFileName(caminho.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-            var pai = Path.GetDirectoryName(caminho.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            var modelo = host.Template;
+            var raiz = caminho.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var nome = Path.GetFileName(raiz);
+            var pai = Path.GetDirectoryName(raiz);
             var nomePai = string.IsNullOrEmpty(pai) ? null : Path.GetFileName(pai);
+            var raizDeProjeto = File.Exists(Path.Combine(raiz, ProjectMarker.FileName));
 
-            var no = nos.FirstOrDefault(n => n.Nome.Equals(nome, StringComparison.OrdinalIgnoreCase));
+            var no = TemplateCatalog.FilhosPara(modelo, nome, nomePai, raizDeProjeto);
 
-            if (no is null && nomePai is not null)
-            {
-                var noPai = nos.FirstOrDefault(n => n.Nome.Equals(nomePai, StringComparison.OrdinalIgnoreCase));
-                no = noPai?.Filhos.FirstOrDefault(f =>
-                    f.Nome.Equals(TemplateCatalog.QuadroToken, StringComparison.OrdinalIgnoreCase));
-            }
-
-            if (no is null || no.Filhos.Count == 0)
+            if (no.Count == 0)
             {
                 return Task.FromResult<object?>(new { filhos = Array.Empty<object>() });
             }
@@ -450,7 +446,7 @@ public static class Commands
                 Log.Error($"Falha ao listar pastas de {caminho}", ex);
             }
 
-            var filhos = no.Filhos
+            var filhos = no
                 .Where(f => !f.Nome.Equals(TemplateCatalog.QuadroToken, StringComparison.OrdinalIgnoreCase))
                 .Select(f => new
                 {
@@ -460,7 +456,7 @@ public static class Commands
                 })
                 .ToList();
 
-            return Task.FromResult<object?>(new { origem = no.Nome, filhos });
+            return Task.FromResult<object?>(new { origem = nome, raiz = raizDeProjeto, filhos });
         });
 
         // ---------- busca ----------

@@ -46,6 +46,54 @@ public sealed class PastaTemporaria : IDisposable
     }
 }
 
+public sealed class TemplateCatalogTests
+{
+    private static readonly List<TemplateNode> Modelo = TemplateCatalog.Default();
+
+    [Fact]
+    public void NaRaizDoProjetoOfereceAsPastasDePrimeiroNivel()
+    {
+        var filhos = TemplateCatalog.FilhosPara(Modelo, "PROJETO DEMO", "1_CV_PROJETOS", raizDeProjeto: true);
+
+        Assert.Equal(new[] { "PACOTE_GRAFICO", "CHAMADAS", "ABERTURA", "EDITORIA", "SAIDA", "REFERENCIAS" },
+            filhos.Select(f => f.Nome));
+    }
+
+    [Fact]
+    public void NaRaizOGanhaSobreONomeDaPasta()
+    {
+        // Projeto chamado ELEMENTOS: o "Novo" deve listar o primeiro nivel, nao os filhos de ELEMENTOS.
+        var filhos = TemplateCatalog.FilhosPara(Modelo, "ELEMENTOS", "1_CV_PROJETOS", raizDeProjeto: true);
+
+        Assert.Contains(filhos, f => f.Nome == "PACOTE_GRAFICO");
+        Assert.DoesNotContain(filhos, f => f.Nome == "AUDIO");
+    }
+
+    [Fact]
+    public void PastaComNomeDoModeloDevolveOsFilhos()
+    {
+        var filhos = TemplateCatalog.FilhosPara(Modelo, "elementos", "ORIGEM", raizDeProjeto: false);
+
+        Assert.Equal(new[] { "AUDIO", "MOV", "SEQUENCIAS", "IMAGENS", "FONTS" }, filhos.Select(f => f.Nome));
+    }
+
+    [Fact]
+    public void PastaDentroDeUmQuadroCasaPeloToken()
+    {
+        var filhos = TemplateCatalog.FilhosPara(Modelo, "CENA_01", "EDITORIA", raizDeProjeto: false);
+
+        Assert.Equal(new[] { "ELEMENTOS", "PROJETOS", "REFERENCIAS" }, filhos.Select(f => f.Nome));
+    }
+
+    [Fact]
+    public void PastaForaDoModeloNaoOfereceNada()
+    {
+        var filhos = TemplateCatalog.FilhosPara(Modelo, "qualquer", "lugar", raizDeProjeto: false);
+
+        Assert.Empty(filhos);
+    }
+}
+
 public sealed class TemplateMaterializerTests
 {
     [Fact]
