@@ -181,8 +181,9 @@ No estilo do Explorer, sem lista de projetos:
 - **Prévia rápida com a barra de espaço**: `Espaço` abre o item selecionado (ou o último, se houver
   vários) numa janela mínima, só com o nome e a mídia. Imagem, vídeo (sempre **em loop**) e **modelo
   3D** — no 3D, arrastar com o **esquerdo orbita**, com o **meio desloca** e com o **direito (ou a
-  roda) aproxima**. A janela é reaproveitada: apertar espaço noutro item troca o conteúdo em vez de
-  abrir outra janela.
+  roda) aproxima**. A órbita não tem trava de elevação: dá para passar por cima dos polos e olhar o
+  modelo de cabeça para baixo. A janela é reaproveitada: apertar espaço noutro item troca o conteúdo
+  em vez de abrir outra janela.
 - **Ambiente e tone mapping na prévia 3D**: presets de HDRI **gerados na hora** (Estúdio, Pôr do sol,
   Noite, Neve — nada é baixado), **Carregar HDRI…** para um `.hdr`/`.exr` do usuário e o botão
   **Ver como ambiente**, que abre a imagem atual como panorama lat-long (equiretangular) com a câmera
@@ -231,7 +232,7 @@ miniatura chega** (antes era apagado junto com o ícone).
 | **EXR / HDR** | Magick.NET (com ajuste de exposição para não sair preta) |
 | **.blend** | **miniatura embutida no próprio arquivo** (bloco `TEST`), lida antes do Shell — instantânea, sem abrir o Blender. Funciona com arquivo comprimido (zstd, que é o padrão ao salvar) e com o cabeçalho novo do Blender 5 (`BLENDER17-01v0502`), por isso a leitura é por **varredura validada** do bloco, não por posição fixa |
 | **OBJ, FBX, GLB, GLTF, STL, USDZ, DAE** | **render próprio em 3D** (three.js em Web Worker + WebGL), câmera em 3/4 |
-| **PLY** | malha pelo `PLYLoader`; se o arquivo for de **Gaussian Splats** (`f_dc_`, `opacity`, `scale_`), o app desenha os splats com shader próprio (cor pelos coeficientes de SH, opacidade com queda radial e tamanho pela escala) |
+| **PLY** | malha pelo `PLYLoader`; se o arquivo for de **Gaussian Splats** (`f_dc_`, `opacity`, `scale_`), o app desenha os splats com shader próprio (cor pelos coeficientes de SH, opacidade com queda gaussiana e tamanho projetado: `escala × focal / profundidade`, com o quad cobrindo 5σ do splat) |
 | **USD (.usd/.usda/.usdc) e Alembic (.abc)** | não têm loader no navegador: o app chama o **Blender instalado** uma vez (`-b --factory-startup`), converte para GLB num cache em `%LOCALAPPDATA%\CVExplorer\modelos` e serve o GLB. Sem Blender, fica o ícone do tipo |
 | MP4, MOV, MXF, AVI, MKV… | frame extraído com ffmpeg → Shell |
 | USD, USDA, USDC, ABC, MA, MB, 3DS, DAE… | ícone do tipo (sem loader no app) |

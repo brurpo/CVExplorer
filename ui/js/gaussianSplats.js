@@ -4,11 +4,19 @@ import * as THREE from '../vendor/three/build/three.module.min.js';
  * Gaussian Splats (.ply com as propriedades f_dc_/opacity/scale_/rot_).
  *
  * three.js não traz renderizador de splats, então o parse e o desenho são daqui:
- * cada splat vira um ponto grande com cor vinda dos coeficientes de SH, opacidade com
- * curva radial e tamanho pela escala. A ordem é resolvida uma vez (de trás para frente),
- * o que basta para olhar um resultado — não é um treino nem um viewer de produção.
+ * cada splat vira um ponto cuja largura em pixels vem da escala do PLY projetada pela
+ * perspectiva (`escala * focal / profundidade`), com o mesmo perfil gaussiano do splat
+ * original. A ordem é resolvida uma vez (de trás para frente), o que basta para olhar um
+ * resultado — não é um treino nem um viewer de produção.
  */
 const SH_C0 = 0.28209479177387814;
+
+/**
+ * Quantos desvios-padrão cabem no quad do ponto. O splat só "existe" até ~2,5σ; desenhar
+ * 1σ (o que o tamanho bruto daria) deixa os pontos minúsculos e o modelo vira uma nuvem
+ * rala.
+ */
+const EXTENSAO = 5;
 
 /** Lê o cabeçalho e diz se o PLY é de splats (tem f_dc_0) em vez de malha. */
 export function ehSplat(buffer) {
@@ -34,13 +42,12 @@ export async function carregar(url) {
   const material = new THREE.ShaderMaterial({
     uniforms: {
       uAlturaTela: { value: 900 },
-      uFocal: { value: 900 },
     },
     vertexShader: `
       attribute vec3 aCor;
       attribute float aAlfa;
       attribute float aEscala;
-      uniform float uFocal;
+      uniform float uAlturaTela;
       varying vec3 vCor;
       varying float vAlfa;
 
@@ -51,9 +58,13 @@ export async function carregar(url) {
         vec4 visto = modelViewMatrix * vec4(position, 1.0);
         gl_Position = projectionMatrix * visto;
 
-        // Tamanho em pixels: escala do splat projetada pela distância.
-        float tamanho = (aEscala * uFocal) / max(-visto.z, 0.001);
-        gl_PointSize = clamp(tamanho, 1.0, 512.0);
+        // Focal em pixels vem da própria matriz de projeção: assim a mudança de FOV
+        // (modelo x panorama) e o zoom não exigem recalcular nada na CPU.
+        float focal = 0.5 * uAlturaTela * projectionMatrix[1][1];
+        float sigma = aEscala * focal / max(-visto.z, 0.0001);
+
+        // O quad precisa cobrir a gaussiana inteira (ver EXTENSAO), não só 1σ.
+        gl_PointSize = clamp(${EXTENSAO.toFixed(1)} * sigma, 1.0, 2048.0);
       }
     `,
     fragmentShader: `
@@ -62,11 +73,14 @@ export async function carregar(url) {
 
       void main() {
         vec2 d = gl_PointCoord - vec2(0.5);
-        float raio = length(d);
-        if (raio > 0.5) discard;
+        float r2 = dot(d, d);
+        if (r2 > 0.25) discard;
 
-        // Queda suave, como o splat gaussiano real.
-        float peso = exp(-6.0 * raio * raio) * (1.0 - smoothstep(0.4, 0.5, raio));
+        // Perfil gaussiano: o deslocamento em sigmas é r * EXTENSAO, então
+        // alfa = exp(-0.5 * (r * EXTENSAO)^2).
+        float peso = exp(-${((EXTENSAO * EXTENSAO) / 2).toFixed(4)} * r2);
+        if (peso < 0.004) discard;
+
         gl_FragColor = vec4(vCor, vAlfa * peso);
       }
     `,
@@ -90,9 +104,9 @@ export async function carregar(url) {
     objeto: grupo,
     centro,
     raio,
-    atualizarTela(alturaPx, focal) {
+    /** Altura do buffer de desenho em pixels; a focal em pixels sai daí, na GPU. */
+    atualizarTela(alturaPx) {
       material.uniforms.uAlturaTela.value = alturaPx;
-      material.uniforms.uFocal.value = focal;
     },
     dispose() {
       geometria.dispose();

@@ -58,10 +58,12 @@ function carregar(loader, url, ext) {
           geometria.computeVertexNormals?.();
 
           // PLY de gaussian splats é nuvem de pontos: desenha como tal, senão some.
+          // O tamanho é em unidades de mundo já normalizadas (raio 1) e não sofre a
+          // escala do grupo — por isso o valor fixo grande, ~2% do modelo.
           if (ext === 'ply' && !geometria.index) {
             resolve(new THREE.Points(
               geometria,
-              new THREE.PointsMaterial({ size: 0.01, color: 0xcfd6de, sizeAttenuation: true }),
+              new THREE.PointsMaterial({ size: 0.06, color: 0xcfd6de, sizeAttenuation: true }),
             ));
             return;
           }

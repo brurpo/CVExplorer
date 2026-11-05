@@ -347,9 +347,11 @@ async function abrirModelo(caminho, ext) {
         aoPreparar: async (contexto) => {
           const nuvem = await splats.carregar(url);
           contexto.definirObjeto(nuvem.objeto);
+          // O tamanho em pixels depende da altura real do buffer (devicePixelRatio incluso).
+          const tamanho = new THREE.Vector2();
           contexto.aoRedimensionar(() => {
-            const altura = contexto.canvas.clientHeight || 520;
-            nuvem.atualizarTela(altura, altura * 1.2);
+            contexto.renderizador.getDrawingBufferSize(tamanho);
+            nuvem.atualizarTela(tamanho.y);
           });
           contexto.aoLimpar(() => nuvem.dispose());
         },
@@ -471,7 +473,8 @@ function iniciarCena({ aoPreparar, semModelo = false }) {
 
     if (botao === 0) {
       orbita.azimute -= dx * 0.008;
-      orbita.elevacao = Math.max(-1.5, Math.min(1.5, orbita.elevacao + dy * 0.008));
+      // Sem limite: dá para passar por cima dos polos e olhar de cabeça para baixo.
+      orbita.elevacao += dy * 0.008;
     } else if (botao === 1) {
       const escala = Math.max(distancia, raioModelo) * 0.0016;
       const direita = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);

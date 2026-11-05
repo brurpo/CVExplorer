@@ -102,7 +102,7 @@ public sealed class ThumbnailService
     /// Muda quando o pipeline de miniaturas muda (novo decoder, nova ordem, render no app):
     /// invalida o cache antigo sozinho, sem o usuario precisar limpar nada.
     /// </summary>
-    private const int VersaoCache = 3;
+    private const int VersaoCache = 4;
 
     public static string Chave(string caminho, long tamanho, DateTime modificado, int size)
     {
