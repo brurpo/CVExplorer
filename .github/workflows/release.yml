@@ -1,9 +1,13 @@
 name: release
 
+# Publicacao manual (Actions > release > Run workflow).
+#
+# Nao ha gatilho por tag de proposito: `vpk upload github --publish --tag vX.Y.Z`
+# cria a tag e, com gatilho por tag, o CI republicaria a mesma release por cima.
+# Quem publica no dia a dia e o scripts\publish.ps1; este workflow existe para
+# gerar a release numa maquina limpa.
+
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
       versao:
@@ -12,6 +16,10 @@ on:
 
 permissions:
   contents: write
+
+env:
+  # Commit do FFmpeg usado no build publicado (ver scripts\build-ffmpeg-dxv.ps1).
+  FFMPEG_REF: baa68e68b34e2de912eb7e94342cebd2545f05ed
 
 jobs:
   publicar:
@@ -24,28 +32,47 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Definir versao
-        id: versao
+      - name: Conferir se a versao ja foi publicada
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $versao = if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            "${{ inputs.versao }}"
-          } else {
-            "${{ github.ref_name }}".TrimStart("v")
+          gh release view "v${{ inputs.versao }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "A release v${{ inputs.versao }} ja existe. Apague-a antes de republicar."
           }
-          Write-Host "Versao: $versao"
-          "valor=$versao" >> $env:GITHUB_OUTPUT
+          Write-Host "Versao livre: v${{ inputs.versao }}"
 
       - name: Testes
         run: dotnet test tests/CVExplorer.Tests/CVExplorer.Tests.csproj -c Release --nologo
+
+      # O ffmpeg portatil demora ~20 min para compilar; o cache evita refazer a cada release.
+      - name: Cache do ffmpeg
+        id: cache-ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: .tools/ffmpeg-dxv/bin
+          key: ffmpeg-${{ env.FFMPEG_REF }}
+
+      - name: Compilar ffmpeg (DXV alpha + NNEDI)
+        if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: .\scripts\build-ffmpeg-dxv.ps1 -Ref $env:FFMPEG_REF
 
       - name: Publicar (self-contained win-x64)
         run: >
           dotnet publish src/CVExplorer.Host/CVExplorer.Host.csproj
           -c Release -r win-x64 --self-contained true
-          -p:Version=${{ steps.versao.outputs.valor }}
+          -p:Version=${{ inputs.versao }}
           -p:RepositorioUrl=https://github.com/${{ github.repository }}
           -o publish
+
+      - name: Incluir o ffmpeg no pacote
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path publish\ffmpeg | Out-Null
+          Copy-Item .tools\ffmpeg-dxv\bin\* publish\ffmpeg -Recurse -Force
+          Get-ChildItem publish\ffmpeg | Select-Object Name, Length
 
       - name: Instalar vpk
         run: dotnet tool install --global vpk
@@ -56,7 +83,7 @@ jobs:
           # --noInst: release so portatil (zip para extrair e usar, sem instalador).
           vpk pack `
             --packId CVExplorer `
-            --packVersion "${{ steps.versao.outputs.valor }}" `
+            --packVersion "${{ inputs.versao }}" `
             --packDir publish `
             --mainExe CvExplorer.exe `
             --packTitle "CV Explorer" `
@@ -67,11 +94,25 @@ jobs:
 
       - name: Publicar release no GitHub
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           vpk upload github `
             --repoUrl https://github.com/${{ github.repository }} `
-            --token "${{ secrets.GITHUB_TOKEN }}" `
+            --token "$env:GH_TOKEN" `
             --publish `
-            --releaseName "CV Explorer ${{ steps.versao.outputs.valor }}" `
-            --tag "v${{ steps.versao.outputs.valor }}" `
-            --merge
+            --releaseName "CV Explorer ${{ inputs.versao }}" `
+            --tag "v${{ inputs.versao }}"
+
+          gh release edit "v${{ inputs.versao }}" --notes-file .github/notas-release.md
+
+      - name: Anexar as fontes do ffmpeg (GPL)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $arquivo = "ffmpeg-$($env:FFMPEG_REF.Substring(0, 7))-fonte.tar.gz"
+          $ProgressPreference = "SilentlyContinue"
+          Invoke-WebRequest "https://github.com/FFmpeg/FFmpeg/archive/$env:FFMPEG_REF.tar.gz" `
+            -OutFile $arquivo -UseBasicParsing -TimeoutSec 1800
+          gh release upload "v${{ inputs.versao }}" $arquivo --clobber

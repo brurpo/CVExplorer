@@ -32,29 +32,37 @@ Pelo terminal, se preferir:
 .\scripts\run.ps1 -SemBuild      # usa o build atual, sem recompilar
 ```
 
-## Gerar uma release
+## Gerar e publicar uma release
 
 ```powershell
-.\scripts\publish.ps1 -Versao 0.1.0 -Repositorio https://github.com/SEU-USUARIO/CVExplorer
+# 1) empacota (portatil, com o ffmpeg que tem DXV3 alpha e NNEDI)
+.\scripts\publish.ps1 -Versao 0.1.1 -IncluirFfmpeg
+
+# 2) publica no GitHub usando o token do cofre do Windows
+.\scripts\publish.ps1 -Versao 0.1.1 -IncluirFfmpeg -Publicar
 ```
 
-Saída em `.\releases` (instalador `Setup.exe`, portátil e pacote de atualização).
+Saída em `.\releases`: `CVExplorer-win-Portable.zip` (é o que se distribui — extrair e rodar,
+sem instalador), `CVExplorer-<versao>-full.nupkg`, `releases.win.json` e `RELEASES` (feed que o
+app lê para se atualizar).
 
-Para publicar de verdade no seu GitHub, basta criar uma tag:
+`-IncluirFfmpeg` copia `.tools\ffmpeg-dxv\bin` para `publish\ffmpeg`; sem a flag o pacote sai
+leve e o app procura o ffmpeg no PATH. Com `-Publicar` o script ainda:
 
-```powershell
-git tag v0.1.0
-git push origin v0.1.0
-```
+- cria a tag `v<versao>` e a release publicada (pelo `vpk upload github`);
+- escreve as notas de [.github/notas-release.md](.github/notas-release.md);
+- anexa `ffmpeg-<sha>-fonte.tar.gz`, o snapshot do FFmpeg que gerou o binário distribuído
+  (exigência da GPL — o commit usado fica em `-FfmpegRef`, igual ao `FFMPEG_REF` do workflow).
 
-O workflow [.github/workflows/release.yml](.github/workflows/release.yml) roda os testes,
-compila, empacota com Velopack e publica a release. O app verifica essa release sozinho
-(`Velopack` + `GithubSource`) e mostra o botão **Atualizar** quando há versão nova.
-**Verificar atualizações vem ligado por padrão** (`VerificarAtualizacoes = true`); desligar é
-uma escolha em Configurações, não o contrário.
+O app verifica essa release sozinho (`Velopack` + `GithubSource`) e mostra o botão **Atualizar**
+quando há versão nova. **Verificar atualizações vem ligado por padrão**
+(`VerificarAtualizacoes = true`); desligar é uma escolha em Configurações, não o contrário.
 
-> Troque `SEU-USUARIO` em [AppInfo.cs](src/CVExplorer.Host/AppInfo.cs) — ou apenas use o
-> workflow, que injeta a URL real do repositório no build (`-p:RepositorioUrl=...`).
+> O workflow [.github/workflows/release.yml](.github/workflows/release.yml) faz o mesmo numa
+> máquina limpa, mas só roda por `workflow_dispatch` (Actions ▸ release ▸ Run workflow). Ele não
+> tem gatilho por tag de propósito: a tag criada pelo `vpk upload` republicaria a release por
+> cima, e o build do runner (que compila o ffmpeg do zero, com cache) não é o mesmo da máquina
+> local.
 
 ### Criar o repositório e o primeiro push
 
@@ -439,10 +447,10 @@ tamanho, não de velocidade.
 
 ### ffmpeg
 
-O app **não** embute o ffmpeg. Ele procura, nesta ordem:
+O app **não** embute o ffmpeg no próprio executável. Ele procura, nesta ordem:
 
 1. o caminho definido em **Configurações**;
-2. a pasta `ffmpeg\` ao lado do `CvExplorer.exe`;
+2. a pasta `ffmpeg\` ao lado do `CvExplorer.exe` (é onde o pacote portátil publica coloca o ffmpeg);
 3. o `PATH` do Windows.
 
 Use um build **LGPL** (ex.: [BtbN `lgpl`](https://github.com/BtbN/FFmpeg-Builds)). Os encoders
@@ -456,7 +464,8 @@ Sem ele o app continua funcionando e o preset apenas fica indisponível.
 
 Esse build é **GPL v2+** (o filtro `nnedi` de desentrelaçamento é GPL e entra junto), e é por isso que
 ele fica em `.tools\ffmpeg-dxv\` e não dentro do app: o ffmpeg continua sendo um processo separado,
-que o CV Explorer apenas executa. Se você só quer desentrelaçar, qualquer ffmpeg com `bwdif` serve.
+que o CV Explorer apenas executa. As releases publicadas com `-IncluirFfmpeg` levam esse build em
+`ffmpeg\`, junto do snapshot de fonte do mesmo commit do FFmpeg (exigência da GPL).
 
 ---
 

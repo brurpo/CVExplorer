@@ -10,6 +10,7 @@
       .\scripts\build-ffmpeg-dxv.ps1              # baixa, aplica o patch, compila
       .\scripts\build-ffmpeg-dxv.ps1 -Forcar      # recompila do zero
       .\scripts\build-ffmpeg-dxv.ps1 -Ref n8.0    # FFmpeg de uma tag/branch específica
+      .\scripts\build-ffmpeg-dxv.ps1 -Ref <sha40> # commit exato (build reproduzível)
 
   Requisitos: Windows x64 e internet. O toolchain (MSYS2 + gcc + nasm + snappy)
   é instalado em .tools\msys64 — nada é instalado no sistema.
@@ -65,9 +66,15 @@ if ($Forcar -or -not (Test-Path $origem)) {
     Remove-Item $origem -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Path (Join-Path $raiz ".tools") -Force | Out-Null
     $tarball = Join-Path $raiz ".tools\ffmpeg-$($Ref -replace '[/\\]', '-').tar.gz"
+    # Um sha de 40 caracteres baixa exatamente aquele commit (o mesmo fonte que vai
+    # junto do release por causa da GPL); qualquer outra coisa e tag ou branch.
+    $endereco = if ($Ref -match '^[0-9a-f]{40}$') {
+        "https://github.com/FFmpeg/FFmpeg/archive/$Ref.tar.gz"
+    } else {
+        "https://github.com/FFmpeg/FFmpeg/archive/refs/heads/$Ref.tar.gz"
+    }
     $ProgressPreference = "SilentlyContinue"
-    Invoke-WebRequest "https://github.com/FFmpeg/FFmpeg/archive/refs/heads/$Ref.tar.gz" `
-        -OutFile $tarball -UseBasicParsing -TimeoutSec 1800
+    Invoke-WebRequest $endereco -OutFile $tarball -UseBasicParsing -TimeoutSec 1800
     New-Item -ItemType Directory -Path $origem -Force | Out-Null
     tar -xzf $tarball -C $origem
     Remove-Item $tarball -Force
