@@ -2,6 +2,7 @@ import { call } from './bridge.js';
 import { t } from './i18n.js';
 import * as fmt from './format.js';
 import * as thumbs from './thumbnails.js';
+import * as saidaAudio from './saidaAudio.js';
 
 const painel = document.getElementById('preview');
 const divisor = document.getElementById('divisor-preview');
@@ -14,6 +15,15 @@ const IMAGENS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif', 'tif
 const LARGURA_PADRAO = 320;
 const LARGURA_MINIMA = 240;
 const CHAVE_ABERTO = 'cvexplorer:previewAberto';
+const CHAVE_MUDO = 'cvexplorer:previaMudo';
+
+function mudoAtual() {
+  try {
+    return localStorage.getItem(CHAVE_MUDO) === '1';
+  } catch {
+    return false;
+  }
+}
 
 /**
  * O painel fica sempre no lugar: abrir/fechar sozinho mudava a largura da grade e,
@@ -146,6 +156,9 @@ async function mostrarVideo(item, caminho, nome) {
   const video = document.createElement('video');
   video.preload = 'auto';
   video.playsInline = true;
+  // Sem `loop` nativo: o fluxo é uma sessão de uso único e reler a URL já encerrada
+  // derruba a reprodução. O reinício é feito em `abrirFluxo` no evento `ended`.
+  video.loop = false;
   if (poster) video.poster = poster;
 
   const controles = document.createElement('div');
@@ -168,6 +181,13 @@ async function mostrarVideo(item, caminho, nome) {
   tempo.className = 'player-tempo';
   tempo.textContent = '00:00 / 00:00';
 
+  const botaoSom = document.createElement('button');
+  botaoSom.className = 'player-btn';
+  botaoSom.title = t('player.som');
+  botaoSom.textContent = '🔊';
+
+  const seletorSaida = saidaAudio.montarSeletor({ video });
+
   const externo = document.createElement('button');
   externo.className = 'player-btn';
   externo.title = t('preview.abrirPlayer');
@@ -179,9 +199,36 @@ async function mostrarVideo(item, caminho, nome) {
   quadro.className = 'player-quadro';
   quadro.alt = '';
 
-  controles.append(botaoTocar, barra, tempo, externo);
+  controles.append(botaoTocar, barra, tempo, botaoSom, seletorSaida, externo);
   container.append(video, quadro, controles);
   corpoEl.replaceChildren(container);
+
+  video.muted = mudoAtual();
+  saidaAudio.aplicar(video, saidaAudio.escolhida());
+
+  const atualizarSom = () => {
+    if (video.muted) {
+      botaoSom.textContent = '🔇';
+      botaoSom.title = t('player.semSom');
+    } else {
+      botaoSom.textContent = '🔊';
+      botaoSom.title = t('player.som');
+    }
+    botaoSom.classList.toggle('ativo', video.muted);
+  };
+
+  botaoSom.addEventListener('click', () => {
+    video.muted = !video.muted;
+    try {
+      localStorage.setItem(CHAVE_MUDO, video.muted ? '1' : '0');
+    } catch {
+      // sem localStorage: só não persiste
+    }
+    atualizarSom();
+  });
+
+  video.addEventListener('volumechange', atualizarSom);
+  atualizarSom();
 
   jogador = {
     caminho,
@@ -193,6 +240,7 @@ async function mostrarVideo(item, caminho, nome) {
     inicio: 0,
     duracao: 0,
     tocando: false,
+    reinicios: 0,
     botao: botaoTocar,
     barra,
     tempo,
@@ -208,6 +256,9 @@ async function mostrarVideo(item, caminho, nome) {
 
   video.addEventListener('play', () => atualizarBotao(true));
   video.addEventListener('pause', () => atualizarBotao(false));
+  video.addEventListener('ended', () => {
+    if (jogador?.video === video) abrirFluxo(jogador.caminho, 0, true);
+  });
   video.addEventListener('timeupdate', () => atualizarTempo());
   video.addEventListener('durationchange', () => {
     // No modo direto a duração vem do próprio arquivo.
@@ -217,8 +268,18 @@ async function mostrarVideo(item, caminho, nome) {
     atualizarTempo();
   });
   video.addEventListener('error', () => {
-    corpoEl.replaceChildren(placeholder(t('preview.previaFalhou', { erro: 'fluxo de vídeo' })));
-    corpoEl.appendChild(botaoExterno(caminho));
+    // Um tropeço no fluxo (trecho perto do fim, pedaço truncado) não pode derrubar a
+    // prévia inteira: reabre no ponto pedido e só desiste se repetir.
+    const total = jogador?.duracao || 0;
+    if (jogador?.video !== video || jogador.nativo || total <= 0 || jogador.reinicios >= 2) {
+      corpoEl.replaceChildren(placeholder(t('preview.previaFalhou', { erro: 'fluxo de vídeo' })));
+      corpoEl.appendChild(botaoExterno(caminho));
+      return;
+    }
+
+    jogador.reinicios += 1;
+    const pedido = (Number(barra.value) / 1000) * total;
+    abrirFluxo(caminho, Math.min(pedido, Math.max(0, total - 1)), jogador.tocando).catch(() => {});
   });
 
   // Arrastar a barra atualiza o quadro na hora: dentro do trecho já baixado o próprio
@@ -422,11 +483,15 @@ async function abrirFluxo(caminho, inicio, tocar) {
   restaurarVideo();
 
   const video = jogador.video;
+  // Direto (Range no próprio arquivo) usa o loop do elemento; fluxo do ffmpeg é
+  // sessão única e precisa de um novo pedido a cada volta (ver evento `ended`).
+  video.loop = jogador.nativo;
   video.src = resposta.url;
   video.load();
   atualizarTempo();
 
   video.addEventListener('loadeddata', () => {
+    if (jogador) jogador.reinicios = 0;
     if (tocar) video.play().catch(() => {});
   }, { once: true });
 }

@@ -4,6 +4,7 @@ import { OBJLoader } from '../vendor/three/examples/jsm/loaders/OBJLoader.js';
 import { STLLoader } from '../vendor/three/examples/jsm/loaders/STLLoader.js';
 import { FBXLoader } from '../vendor/three/examples/jsm/loaders/FBXLoader.js';
 import { USDZLoader } from '../vendor/three/examples/jsm/loaders/USDZLoader.js';
+import { PLYLoader } from '../vendor/three/examples/jsm/loaders/PLYLoader.js';
 
 /**
  * Desenho da miniatura 3D. Usado pelo worker (OffscreenCanvas) e, no caso do FBX
@@ -27,6 +28,8 @@ async function criadorDeLoader(ext) {
       return new FBXLoader();
     case 'usdz':
       return new USDZLoader();
+    case 'ply':
+      return new PLYLoader();
     case 'dae': {
       const { ColladaLoader } = await import('../vendor/three/examples/jsm/loaders/ColladaLoader.js');
       return new ColladaLoader();
@@ -50,9 +53,19 @@ function carregar(loader, url, ext) {
           resolve(resultado.scene);
         } else if (ext === 'obj' || ext === 'fbx') {
           resolve(resultado);
-        } else if (ext === 'stl') {
+        } else if (ext === 'stl' || ext === 'ply') {
           const geometria = resultado;
-          geometria.computeVertexNormals();
+          geometria.computeVertexNormals?.();
+
+          // PLY de gaussian splats é nuvem de pontos: desenha como tal, senão some.
+          if (ext === 'ply' && !geometria.index) {
+            resolve(new THREE.Points(
+              geometria,
+              new THREE.PointsMaterial({ size: 0.01, color: 0xcfd6de, sizeAttenuation: true }),
+            ));
+            return;
+          }
+
           resolve(new THREE.Mesh(
             geometria,
             new THREE.MeshStandardMaterial({ color: 0xb9c0c9, metalness: 0.1, roughness: 0.7 }),

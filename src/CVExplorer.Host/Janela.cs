@@ -476,6 +476,14 @@ public sealed class Janela : Form
             core.SetVirtualHostNameToFolderMapping(
                 AppPaths.ThumbsVirtualHost, AppPaths.ThumbsDir, CoreWebView2HostResourceAccessKind.Allow);
 
+            // O Chromium só lista as saídas de áudio (enumerateDevices) quando a página tem
+            // permissão de mídia. Concedemos microfone à própria interface: ela nunca abre o
+            // microfone, usa a lista apenas para escolher onde o som do vídeo toca.
+            await core.Profile.SetPermissionStateAsync(
+                CoreWebView2PermissionKind.Microphone,
+                $"https://{AppPaths.UiVirtualHost}",
+                CoreWebView2PermissionState.Allow);
+
             _bridge = new IpcBridge(
                 core,
                 _host.Routes,

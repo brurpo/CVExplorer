@@ -46,7 +46,7 @@ public sealed class ThumbnailService
     /// <summary>Formatos que o proprio app renderiza (three.js no WebView2).</summary>
     private static readonly HashSet<string> Modelos3D = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".obj", ".fbx", ".glb", ".gltf", ".stl", ".usdz", ".dae",
+        ".obj", ".fbx", ".glb", ".gltf", ".stl", ".usdz", ".dae", ".ply",
         // USD e Alembic não têm loader no navegador: o Blender converte uma vez para GLB.
         ".usd", ".usda", ".usdc", ".abc",
     };

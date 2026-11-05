@@ -427,6 +427,32 @@ public static class Commands
             return Task.FromResult<object?>(new { caminho = ok ? dialogo.SelectedPath : null });
         });
 
+        // Escolher um arquivo qualquer (HDRI do usuário, por exemplo).
+        Add("fs.pickFile", (args, _) =>
+        {
+            using var dialogo = new OpenFileDialog
+            {
+                Title = Str(args, "titulo", "Escolher arquivo"),
+                CheckFileExists = true,
+                Multiselect = false,
+            };
+
+            var filtro = NullableStr(args, "filtro");
+            if (!string.IsNullOrWhiteSpace(filtro))
+            {
+                dialogo.Filter = filtro;
+            }
+
+            var inicial = Str(args, "inicial");
+            if (Directory.Exists(inicial))
+            {
+                dialogo.InitialDirectory = inicial;
+            }
+
+            var ok = dialogo.ShowDialog() == DialogResult.OK;
+            return Task.FromResult<object?>(new { caminho = ok ? dialogo.FileName : null });
+        });
+
         // Pre-visualizacao entregue como bytes (base64): nao depende de host virtual.
         Add("fs.preview", (args, _) =>
         {

@@ -53,7 +53,7 @@ export const CATEGORIAS = {
   imagem: ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'psd', 'psb', 'ai', 'svg', 'exr', 'gif', 'bmp', 'webp', 'tga', 'dpx', 'heic', 'jxl'],
   video: ['mp4', 'mov', 'mxf', 'avi', 'mkv', 'wmv', 'webm', 'm4v', 'mpg', 'mpeg', 'mts', 'm2ts', 'r3d', 'braw'],
   audio: ['wav', 'mp3', 'aif', 'aiff', 'flac', 'm4a', 'ogg', 'aac'],
-  modelo3d: ['blend', 'obj', 'fbx', 'usd', 'usda', 'usdc', 'usdz', 'glb', 'gltf', 'dae', 'abc', 'ma', 'mb', 'c4d', 'stl'],
+  modelo3d: ['blend', 'obj', 'fbx', 'usd', 'usda', 'usdc', 'usdz', 'glb', 'gltf', 'dae', 'abc', 'ply', 'ma', 'mb', 'c4d', 'stl'],
   documento: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'csv', 'md'],
   compactado: ['zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'tbz2', 'xz', 'txz', 'zst', 'cab', 'iso'],
   projeto: ['aep', 'prproj', 'drp', 'nk'],

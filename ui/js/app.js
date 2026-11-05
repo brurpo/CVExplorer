@@ -55,6 +55,38 @@ async function iniciar() {
     });
   });
 
+  // Verificar atualizações na mão, sem abrir as configurações.
+  document.getElementById('btn-verificar-atualizacao').addEventListener('click', async (evento) => {
+    const botao = evento.currentTarget;
+    botao.disabled = true;
+    botao.classList.add('girando');
+    ui.toast(t('config.verificando'), 'info', 2500);
+
+    try {
+      // Uma chamada só: quando existe versão nova ela já vem baixada.
+      const resultado = await call('updates.check', { baixar: true });
+
+      if (resultado?.disponivel && resultado.baixado) {
+        ui.toast(t('toast.atualizado'), 'ok', 6000);
+        await call('updates.apply');
+        return;
+      }
+
+      if (resultado?.motivo === 'atualizado') {
+        ui.toast(t('config.semAtualizacao', { versao: resultado.versao }), 'ok', 5000);
+      } else if (resultado?.motivo === 'nao-instalado' || resultado?.motivo === 'repositorio-nao-configurado') {
+        ui.toast(t('toast.atualizacaoIndisponivel'), 'erro', 6000);
+      } else {
+        ui.toast(t('config.falhaVerificar', { motivo: resultado?.mensagem ?? resultado?.motivo ?? '?' }), 'erro');
+      }
+    } catch (erro) {
+      ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
+    } finally {
+      botao.disabled = false;
+      botao.classList.remove('girando');
+    }
+  });
+
   document.getElementById('btn-config').addEventListener('click', async () => {
     await dialogs.abrirConfiguracoes(state.config, state.info, async (novo) => {
       state.config = novo;

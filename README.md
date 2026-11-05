@@ -56,7 +56,9 @@ leve e o app procura o ffmpeg no PATH. Com `-Publicar` o script ainda:
 
 O app verifica essa release sozinho (`Velopack` + `GithubSource`) e mostra o botão **Atualizar**
 quando há versão nova. **Verificar atualizações vem ligado por padrão**
-(`VerificarAtualizacoes = true`); desligar é uma escolha em Configurações, não o contrário.
+(`VerificarAtualizacoes = true`); desligar é uma escolha em Configurações, não o contrário. Para
+procurar na hora, o ícone de **seta circular ao lado da engrenagem** faz a mesma verificação do menu
+(baixa, aplica e reinicia), com o ícone girando enquanto procura.
 
 > O workflow [.github/workflows/release.yml](.github/workflows/release.yml) faz o mesmo numa
 > máquina limpa, mas só roda por `workflow_dispatch` (Actions ▸ release ▸ Run workflow). Ele não
@@ -176,10 +178,15 @@ No estilo do Explorer, sem lista de projetos:
   somente leitura: criar, renomear, recortar e excluir ficam desligados, com aviso claro. O
   arquivo compactado usa ícone próprio (caixa amarela), não a miniatura do Windows.
 - **Prévia rápida com a barra de espaço**: `Espaço` abre o item selecionado (ou o último, se houver
-  vários) numa janela mínima, só com o nome e a mídia. Imagem, vídeo e **modelo 3D** — no 3D,
-  arrastar com o **esquerdo orbita**, com o **meio desloca** e com o **direito (ou a roda)
-  aproxima**. A janela é reaproveitada: apertar espaço noutro item troca o conteúdo em vez de abrir
-  outra janela.
+  vários) numa janela mínima, só com o nome e a mídia. Imagem, vídeo (sempre **em loop**) e **modelo
+  3D** — no 3D, arrastar com o **esquerdo orbita**, com o **meio desloca** e com o **direito (ou a
+  roda) aproxima**. A janela é reaproveitada: apertar espaço noutro item troca o conteúdo em vez de
+  abrir outra janela.
+- **Ambiente e tone mapping na prévia 3D**: presets de HDRI **gerados na hora** (Estúdio, Pôr do sol,
+  Noite, Neve — nada é baixado), **Carregar HDRI…** para um `.hdr`/`.exr` do usuário e o botão
+  **Ver como ambiente**, que abre a imagem atual como panorama lat-long (equiretangular) com a câmera
+  dentro dele. A cena renderiza com **ACES** e **exposição** ajustável, então HDR aparece como HDR em
+  vez de estourar.
 - **Pré-visualização lateral sempre no lugar**: o painel abre junto com o app e fica visível (com
   estado vazio) até você recolher — pelo **⟩** do painel ou pelo botão no topo. Nada de abrir/fechar
   sozinho: era isso que roubava largura da grade e fazia o duplo clique acertar outro arquivo
@@ -223,6 +230,7 @@ miniatura chega** (antes era apagado junto com o ícone).
 | **EXR / HDR** | Magick.NET (com ajuste de exposição para não sair preta) |
 | **.blend** | **miniatura embutida no próprio arquivo** (bloco `TEST`), lida antes do Shell — instantânea, sem abrir o Blender. Funciona com arquivo comprimido (zstd, que é o padrão ao salvar) e com o cabeçalho novo do Blender 5 (`BLENDER17-01v0502`), por isso a leitura é por **varredura validada** do bloco, não por posição fixa |
 | **OBJ, FBX, GLB, GLTF, STL, USDZ, DAE** | **render próprio em 3D** (three.js em Web Worker + WebGL), câmera em 3/4 |
+| **PLY** | malha pelo `PLYLoader`; se o arquivo for de **Gaussian Splats** (`f_dc_`, `opacity`, `scale_`), o app desenha os splats com shader próprio (cor pelos coeficientes de SH, opacidade com queda radial e tamanho pela escala) |
 | **USD (.usd/.usda/.usdc) e Alembic (.abc)** | não têm loader no navegador: o app chama o **Blender instalado** uma vez (`-b --factory-startup`), converte para GLB num cache em `%LOCALAPPDATA%\CVExplorer\modelos` e serve o GLB. Sem Blender, fica o ícone do tipo |
 | MP4, MOV, MXF, AVI, MKV… | frame extraído com ffmpeg → Shell |
 | USD, USDA, USDC, ABC, MA, MB, 3DS, DAE… | ícone do tipo (sem loader no app) |
@@ -292,8 +300,24 @@ token aleatório na URL):
 - Soltar a barra reinicia o fluxo no ponto escolhido (`-ss` antes de `-i`, busca por keyframe) e o
   fluxo novo entra no mesmo `<video>`, sem dar play sozinho. A barra de tempo usa a duração real do
   `ffprobe`.
-- Controles próprios (play/pause, linha do tempo, tempo, abrir no player externo) porque um fluxo
-  contínuo não tem duração de arquivo.
+- **Controles próprios** (play/pause, linha do tempo, tempo, abrir no player externo) porque um
+  fluxo contínuo não tem duração de arquivo. A **prévia rápida** (barra de espaço) usa esses mesmos
+  controles quando o vídeo vem em fluxo: com o controle nativo, a duração é desconhecida, o
+  navegador desenha a barra como *transmissão ao vivo* e o cabeçote fica pulando de um lado para o
+  outro. Nos arquivos que o navegador decodifica sozinho, os controles nativos continuam (duração
+  exata e seek nativo).
+- **Loop que não quebra o fluxo**: no fluxo o `<video>` não usa `loop` — a URL é de uso único e
+  relê-la daria erro de rede e vídeo parado. Ao terminar, o app pede um fluxo novo do zero. No
+  arquivo original o loop é o do próprio navegador.
+- **Tropeço no fluxo não derruba a prévia**: se o `<video>` der erro (acontece ao pular para o
+  extremo do fim de um fluxo já encerrado), o app reabre no ponto pedido — até duas vezes — antes de
+  mostrar a falha.
+- **Som**: a prévia lateral tem botão de mudo (o estado fica guardado entre vídeos) e, nos dois
+  players — lateral e prévia rápida —, um **seletor de saída de áudio** com as caixas instaladas no
+  computador (`setSinkId`). Na prévia rápida o seletor fica na linha do nome do arquivo, nunca por
+  cima da imagem. A escolha vale para os vídeos seguintes; para o Chromium listar as saídas, o
+  WebView2 recebe permissão de microfone para a própria interface — o microfone nunca é aberto, a
+  permissão só destrava a lista de dispositivos.
 - O processo do ffmpeg morre ao trocar de arquivo, ao fechar a prévia e ao fechar a janela — e o
   app **espera** o processo sair antes de seguir, para o arquivo não ficar travado.
 

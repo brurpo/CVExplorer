@@ -8,7 +8,7 @@ import { desenhar } from './thumb3dRender.js';
  * Exceção: FBX usa `document` para resolver texturas, então cai para a thread
  * da interface (o parse continua rápido; só não é paralelo).
  */
-const EXTENSOES = ['obj', 'fbx', 'glb', 'gltf', 'stl', 'usdz', 'dae'];
+const EXTENSOES = ['obj', 'fbx', 'glb', 'gltf', 'stl', 'usdz', 'dae', 'ply'];
 
 /** Formatos que o worker não consegue desenhar sozinho (dependem de `document`). */
 const SOMENTE_THREAD = ['fbx', 'dae'];
