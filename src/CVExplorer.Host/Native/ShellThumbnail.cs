@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 
@@ -26,6 +27,7 @@ internal static class ShellThumbnail
     {
         BiggerSizeOk = 0x01,
         ThumbnailOnly = 0x08,
+        IconOnly = 0x04,
         ScaleUp = 0x100,
     }
 
@@ -34,7 +36,7 @@ internal static class ShellThumbnail
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IShellItemImageFactory
     {
-        void GetImage(SIZE size, SIIGBF flags, out IntPtr phbm);
+        int GetImage(SIZE size, SIIGBF flags, out IntPtr phbm);
     }
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
@@ -49,6 +51,60 @@ internal static class ShellThumbnail
 
     [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr hIcon);
+
+    [DllImport("user32.dll")]
+    private static extern bool DrawIconEx(
+        IntPtr hdc, int x, int y, IntPtr hIcon, int largura, int altura, uint passo, IntPtr pincel, uint flags);
+
+    [DllImport("gdi32.dll")]
+    private static extern int GetObject(IntPtr hObject, int tamanho, ref BITMAP estrutura);
+
+    [DllImport("gdi32.dll")]
+    private static extern int GetDIBits(
+        IntPtr hdc, IntPtr hbitmap, uint inicio, uint linhas, byte[] bits, ref BITMAPINFO info, uint uso);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetDC(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BITMAP
+    {
+        public int bmType;
+        public int bmWidth;
+        public int bmHeight;
+        public int bmWidthBytes;
+        public ushort bmPlanes;
+        public ushort bmBitsPixel;
+        public IntPtr bmBits;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BITMAPINFOHEADER
+    {
+        public uint biSize;
+        public int biWidth;
+        public int biHeight;
+        public ushort biPlanes;
+        public ushort biBitCount;
+        public uint biCompression;
+        public uint biSizeImage;
+        public int biXPelsPerMeter;
+        public int biYPelsPerMeter;
+        public uint biClrUsed;
+        public uint biClrImportant;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BITMAPINFO
+    {
+        public BITMAPINFOHEADER bmiHeader;
+
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        public uint[] bmiColors;
+    }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct SHFILEINFO
@@ -77,7 +133,7 @@ internal static class ShellThumbnail
     private const uint SHGFI_USEFILEATTRIBUTES = 0x10;
     private const uint FILE_ATTRIBUTE_NORMAL = 0x80;
 
-    private sealed record Request(string Path, int Size, TaskCompletionSource<byte[]?> Completion);
+    private sealed record Request(string Path, int Size, bool Icone, TaskCompletionSource<byte[]?> Completion);
 
     private static readonly BlockingCollection<Request> Queue = new();
 
@@ -95,12 +151,22 @@ internal static class ShellThumbnail
         }
     }
 
-    public static async Task<byte[]?> GetPngAsync(string path, int size, CancellationToken ct)
+    public static Task<byte[]?> GetPngAsync(string path, int size, CancellationToken ct) =>
+        Enfileirar(path, size, icone: false, ct);
+
+    /// <summary>
+    /// Icone do item como o Explorer mostra (o do proprio .exe/.lnk quando existe), no
+    /// maior tamanho que o Shell tiver — normalmente 256 px — e com transparencia.
+    /// </summary>
+    public static Task<byte[]?> GetIconPngAsync(string path, int size, CancellationToken ct) =>
+        Enfileirar(path, size, icone: true, ct);
+
+    private static async Task<byte[]?> Enfileirar(string path, int size, bool icone, CancellationToken ct)
     {
         var completion = new TaskCompletionSource<byte[]?>(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
-            Queue.Add(new Request(path, size, completion), ct);
+            Queue.Add(new Request(path, size, icone, completion), ct);
         }
         catch (Exception)
         {
@@ -117,12 +183,14 @@ internal static class ShellThumbnail
         {
             try
             {
-                request.Completion.TrySetResult(Render(request.Path, request.Size));
+                request.Completion.TrySetResult(
+                    request.Icone ? RenderIcon(request.Path, request.Size) : Render(request.Path, request.Size));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Sem handler instalado para o formato (ex.: .blend, .svg, .exr):
-                // e um caminho esperado, a cadeia de provedores assume a partir daqui.
+                // Sem handler instalado para o formato (ex.: .blend, .svg, .exr) e um
+                // caminho esperado; mas falha de conversao precisa aparecer no log.
+                Log.Error($"Falha ao obter imagem do Shell: {request.Path}", ex);
                 request.Completion.TrySetResult(null);
             }
         }
@@ -168,8 +236,54 @@ internal static class ShellThumbnail
         }
     }
 
-    /// <summary>Icone associado ao tipo do arquivo — ultimo recurso da cadeia.</summary>
-    public static byte[]? GetTypeIcon(string path)
+    /// <summary>
+    /// Icone do item pelo Shell, no maior tamanho disponivel (256 px quando o arquivo tem
+    /// essa resolucao) e preservando o alfa — e o mesmo desenho que o Explorer mostra,
+    /// inclusive o icone proprio de cada .exe/.lnk.
+    /// </summary>
+    private static byte[]? RenderIcon(string path, int size)
+    {
+        var iid = typeof(IShellItemImageFactory).GUID;
+        if (SHCreateItemFromParsingName(path, IntPtr.Zero, ref iid, out var factory) == 0
+            && factory is IShellItemImageFactory fabrica)
+        {
+            var bitmap = IntPtr.Zero;
+            try
+            {
+                var hr = fabrica.GetImage(
+                    new SIZE { cx = size, cy = size },
+                    SIIGBF.IconOnly | SIIGBF.BiggerSizeOk | SIIGBF.ScaleUp,
+                    out bitmap);
+
+                if (hr == 0 && bitmap != IntPtr.Zero)
+                {
+                    var png = PngFromHBitmap(bitmap);
+                    if (png is not null)
+                    {
+                        return png;
+                    }
+                }
+            }
+            finally
+            {
+                if (bitmap != IntPtr.Zero)
+                {
+                    DeleteObject(bitmap);
+                }
+
+                if (Marshal.IsComObject(factory))
+                {
+                    Marshal.ReleaseComObject(factory);
+                }
+            }
+        }
+
+        // Caminho virtual (unidade de rede sem handler, item de compactado): icone do
+        // tipo em 32 px pelo SHGetFileInfo, que e o que existe sem instalar nada.
+        return PngFromHIcon(path, size);
+    }
+
+    private static byte[]? PngFromHIcon(string path, int size)
     {
         var info = new SHFILEINFO();
         var flags = SHGFI_ICON | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES;
@@ -181,8 +295,22 @@ internal static class ShellThumbnail
 
         try
         {
-            using var icon = Icon.FromHandle(info.hIcon);
-            using var bitmap = icon.ToBitmap();
+            using var bitmap = new Bitmap(32, 32, PixelFormat.Format32bppArgb);
+            using (var graphics = Graphics.FromImage(bitmap))
+            {
+                graphics.CompositingMode = CompositingMode.SourceCopy;
+                graphics.Clear(Color.Transparent);
+                var hdc = graphics.GetHdc();
+                try
+                {
+                    DrawIconEx(hdc, 0, 0, info.hIcon, 32, 32, 0, IntPtr.Zero, 0x0003 /* DI_NORMAL */);
+                }
+                finally
+                {
+                    graphics.ReleaseHdc(hdc);
+                }
+            }
+
             using var stream = new MemoryStream();
             bitmap.Save(stream, ImageFormat.Png);
             return stream.ToArray();
@@ -191,5 +319,90 @@ internal static class ShellThumbnail
         {
             DestroyIcon(info.hIcon);
         }
+    }
+
+    /// <summary>
+    /// HBITMAP do Shell (32 bpp, fundo transparente) para PNG. Image.FromHbitmap jogaria
+    /// o alfa fora — e o icone sairia com fundo preto —, entao os pixels vem por GetDIBits.
+    /// </summary>
+    private static byte[]? PngFromHBitmap(IntPtr hbitmap)
+    {
+        var medidas = new BITMAP();
+        if (GetObject(hbitmap, Marshal.SizeOf<BITMAP>(), ref medidas) == 0)
+        {
+            return null;
+        }
+
+        var largura = medidas.bmWidth;
+        var altura = medidas.bmHeight;
+        if (largura <= 0 || altura <= 0 || largura > 4096 || altura > 4096)
+        {
+            return null;
+        }
+
+        var info = new BITMAPINFO
+        {
+            bmiHeader = new BITMAPINFOHEADER
+            {
+                biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>(),
+                biWidth = largura,
+                biHeight = -altura,
+                biPlanes = 1,
+                biBitCount = 32,
+                biCompression = 0,
+            },
+        };
+
+        var pixels = new byte[largura * altura * 4];
+        var tela = GetDC(IntPtr.Zero);
+        try
+        {
+            if (GetDIBits(tela, hbitmap, 0, (uint)altura, pixels, ref info, 0) == 0)
+            {
+                return null;
+            }
+        }
+        finally
+        {
+            ReleaseDC(IntPtr.Zero, tela);
+        }
+
+        // Icone antigo (sem canal alfa) chega com tudo zero: sem isso ficaria invisivel.
+        var temAlfa = false;
+        for (var i = 3; i < pixels.Length; i += 4)
+        {
+            if (pixels[i] != 0)
+            {
+                temAlfa = true;
+                break;
+            }
+        }
+
+        if (!temAlfa)
+        {
+            for (var i = 3; i < pixels.Length; i += 4)
+            {
+                pixels[i] = 255;
+            }
+        }
+
+        using var bitmap = new Bitmap(largura, altura, PixelFormat.Format32bppArgb);
+        var dados = bitmap.LockBits(
+            new Rectangle(0, 0, largura, altura),
+            ImageLockMode.WriteOnly,
+            PixelFormat.Format32bppArgb);
+
+        try
+        {
+            Marshal.Copy(pixels, 0, dados.Scan0, pixels.Length);
+        }
+        finally
+        {
+            bitmap.UnlockBits(dados);
+        }
+
+        using var stream = new MemoryStream();
+        bitmap.Save(stream, ImageFormat.Png);
+        return stream.ToArray();
     }
 }

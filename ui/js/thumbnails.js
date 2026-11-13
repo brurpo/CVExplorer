@@ -45,7 +45,7 @@ export function limparCache() {
  * Se a mesma miniatura já está na fila, o pedido novo só assume o lugar do antigo
  * (a telha que vai receber a imagem é a que está na tela agora).
  */
-export function solicitar(item, tamanho, aoPronto) {
+export function solicitar(item, tamanho, aoPronto, aoFalhar) {
   const k = chave(item);
   const pronto = cache.get(k);
   if (pronto) {
@@ -53,15 +53,19 @@ export function solicitar(item, tamanho, aoPronto) {
     return;
   }
 
-  if (falhas.has(k)) return;
+  if (falhas.has(k)) {
+    aoFalhar?.();
+    return;
+  }
 
   const emAndamento = pendentes.get(k);
   if (emAndamento) {
     emAndamento.aoPronto = aoPronto;
+    emAndamento.aoFalhar = aoFalhar;
     return;
   }
 
-  pendentes.set(k, { item, tamanho, aoPronto });
+  pendentes.set(k, { item, tamanho, aoPronto, aoFalhar });
   fila.push(k);
   bombear();
 }
@@ -74,8 +78,12 @@ function concluir(k, url) {
 }
 
 function registrarFalha(k) {
+  const pedido = pendentes.get(k);
   pendentes.delete(k);
   falhas.add(k);
+
+  // Sem miniatura: a telha fica com o icone real do Windows (que o host entrega a parte).
+  pedido?.aoFalhar?.();
 }
 
 function bombear() {

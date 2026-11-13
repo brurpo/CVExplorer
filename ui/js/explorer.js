@@ -7,7 +7,8 @@ import * as preview from './preview.js';
 import * as dialogs from './dialogs.js';
 import * as lateral from './projects.js';
 import * as projetoAtual from './projetoAtual.js';
-import { icone } from './icons.js';
+import { icone, temIconeProprio } from './icons.js';
+import * as icones from './icones.js';
 import { state, itensAtuais, selecionados, limparSelecao } from './state.js';
 
 const area = document.getElementById('area-itens');
@@ -887,6 +888,27 @@ function renderizarGrade(itens) {
   area.appendChild(fragmento);
 }
 
+/**
+ * Troca o desenho de tipo pelo icone real do Windows, que o host extrai em 256 px.
+ * O elemento hospedeiro continua no DOM: a miniatura, quando chegar, substitui ele
+ * inteiro (replaceChild), entao o icone nao atrapalha.
+ * Roda tambem quando a telha e criada fora do documento (rolagem): trocar o conteudo
+ * de um no solto e valido e evita o icone "voltar" ao desenho antigo ao rolar.
+ */
+function aplicarIconeReal(item, hospedeiro) {
+  icones.solicitar(item, (url) => {
+    // Se a miniatura ja tomou o lugar, nao ha o que trocar.
+    if (!hospedeiro.querySelector('svg, img.icone-tipo')) return;
+
+    const img = document.createElement('img');
+    img.className = 'icone-real';
+    img.src = url;
+    img.alt = '';
+    img.draggable = false;
+    hospedeiro.replaceChildren(img);
+  });
+}
+
 function criarTelha(item, coluna, linha, largura, altura, alturaLinha) {
   const caminho = item.Caminho ?? item.caminho;
   const nome = item.Nome ?? item.nome;
@@ -924,15 +946,31 @@ function criarTelha(item, coluna, linha, largura, altura, alturaLinha) {
     iconeEl.dataset.cat = cat;
     iconeEl.innerHTML = icone(cat, ext);
     thumb.appendChild(iconeEl);
+
+    // Sem miniatura, quem aparece é o icone do Windows (256 px, o mesmo do Explorer) —
+    // menos nos tipos que já têm desenho próprio (compactado, PDF, videoclipe…).
+    if (!temIconeProprio(cat, ext)) aplicarIconeReal(item, iconeEl);
+
     if (usarMiniatura) {
-      thumbs.solicitar(item, Math.round(largura * (window.devicePixelRatio || 1)), (url) => {
-        if (!telha.isConnected) return;
-        const img = document.createElement('img');
-        img.src = url;
-        img.alt = '';
-        // Troca só o ícone: replaceChildren apagaria o selo de formato.
-        thumb.replaceChild(img, iconeEl);
-      });
+      thumbs.solicitar(
+        item,
+        Math.round(largura * (window.devicePixelRatio || 1)),
+        (url) => {
+          const atual = thumb.querySelector('.tile-icone');
+          if (!telha.isConnected || !atual) return;
+
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = '';
+          // Troca só o ícone: replaceChildren apagaria o selo de formato.
+          thumb.replaceChild(img, atual);
+        },
+        // Sem miniatura para este arquivo: o icone real fica no lugar do desenho.
+        () => {
+          const atual = thumb.querySelector('.tile-icone');
+          if (atual && !temIconeProprio(cat, ext)) aplicarIconeReal(item, atual);
+        },
+      );
     }
   }
 
@@ -981,6 +1019,8 @@ function renderizarLista(itens) {
     iconeEl.className = 'row-icone';
     iconeEl.dataset.cat = ehPasta ? 'pasta' : fmt.categoria(ext);
     iconeEl.innerHTML = icone(ehPasta ? 'pasta' : fmt.categoria(ext), ext);
+
+    if (!ehPasta && !temIconeProprio(fmt.categoria(ext), ext)) aplicarIconeReal(item, iconeEl);
 
     const nomeEl = document.createElement('span');
     nomeEl.className = 'row-nome';

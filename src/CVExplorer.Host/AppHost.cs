@@ -53,6 +53,9 @@ public sealed class AppHost
 
     public ThumbnailService Thumbs { get; }
 
+    /// <summary>Icones do tipo (ou do proprio arquivo, como o de cada .exe) em PNG de 256 px.</summary>
+    public IconService Icones { get; } = new();
+
     /// <summary>Modelos 3D: resolve o formato que o navegador desenha (USD/Alembic via Blender).</summary>
     public ModeloService Modelos { get; } = new();
 

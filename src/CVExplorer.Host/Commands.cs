@@ -1018,6 +1018,22 @@ public static class Commands
             };
         }, operacao: true);
 
+        // Icone do Windows para o tipo (ou para o proprio arquivo, como o de cada .exe),
+        // em PNG de 256 px com transparencia. Fica no mesmo cache das miniaturas.
+        Add("icone.obter", async (args, ct) =>
+        {
+            var caminho = Str(args, "caminho");
+            var resultado = await host.Icones
+                .ObterAsync(caminho, Long(args, "tamanho", 0), Date(args, "modificado"), ct)
+                .ConfigureAwait(false);
+
+            return new
+            {
+                chave = resultado.Chave,
+                url = resultado.Pronta ? IconService.UrlFor(resultado.Chave) : null,
+            };
+        }, operacao: true);
+
         // A interface renderizou o modelo 3D: grava o WebP no mesmo cache das outras miniaturas.
         Add("thumb.salvar", (args, _) =>
         {

@@ -303,8 +303,9 @@ public sealed class ThumbnailService
             }
         }
 
-        // 4) Icone do tipo.
-        return await Task.Run(() => ShellThumbnail.GetTypeIcon(caminho), ct).ConfigureAwait(false);
+        // 4) Sem miniatura: a interface mostra o icone real do Windows (icone.obter), que
+        // e PNG de 256 px — melhor do que gravar um icone de 32 px no cache de miniaturas.
+        return null;
     }
 
     private static byte[]? ReadBlend(string caminho)

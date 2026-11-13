@@ -260,6 +260,20 @@ acompanham o tamanho da telha — antes eram 34 px fixos e ficavam minúsculos e
 alta. O selo de formato (PDF, AI, XML…) também escala junto e **continua visível depois que a
 miniatura chega** (antes era apagado junto com o ícone).
 
+**Ícone do Windows para os tipos sem arte própria**: `.txt`, `.doc`, `.csv`, `.exe`, `.bat`,
+`.jsx` e companhia mostram o **ícone do próprio Windows**, extraído pelo `IShellItemImageFactory`
+em **PNG de 256 px com transparência** — o maior tamanho que o Shell guarda, e o mesmo desenho
+que o Explorer mostra. `.exe`, `.lnk`, `.ico`, `.msi` e `.dll` guardam **o ícone de dentro do
+arquivo** (é assim que o `CvExplorer.exe` aparece com o logo do app, e não com o ícone genérico
+de executável). Os desenhos próprios do app continuam mandando onde existem: pastas, compactados,
+PDF, imagem, vetor, vídeo, áudio, modelo 3D e projeto.
+
+O cache é separado: por **extensão** (mil `.txt` dividem um PNG) e por **caminho + data** quando
+o ícone vem do arquivo — então recompilar um `.exe` troca o ícone sozinho. Os PNGs ficam em
+`%LOCALAPPDATA%\CVExplorer\miniaturas\icone-*.png`, servidos pelo mesmo host virtual das
+miniaturas, e a conversão mantém o canal alfa (o `Image.FromHbitmap` do GDI+ jogaria a
+transparência fora e o ícone sairia com fundo preto).
+
 | Formato | Como é gerada |
 |---|---|
 | JPG, PNG, WEBP, GIF, BMP, TIFF, TGA, HEIC, JXL | Shell do Windows → Magick.NET |

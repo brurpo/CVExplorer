@@ -505,6 +505,22 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
 
 .tile-icone { color: var(--text-2); }
 
+/* Icone do proprio Windows (256 px do Shell): mesmo lugar e tamanho do desenho da
+   interface, sem moldura — quem desenha o volume e a cor e o sistema. */
+.tile-icone .icone-real {
+  width: clamp(56px, calc(var(--lado-telha, 168px) * 0.74), 190px);
+  height: clamp(56px, calc(var(--lado-telha, 168px) * 0.74), 190px);
+  object-fit: contain;
+  display: block;
+}
+
+.row-icone .icone-real {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+  display: block;
+}
+
 /* Arquivo compactado: caixa no amarelo das pastas (azul é seleção, não decoração). */
 .tile-icone .icone-compactado,
 .row-icone .icone-compactado,

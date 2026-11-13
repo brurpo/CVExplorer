@@ -95,6 +95,19 @@ export function iconeUnidade(tipo) {
 }
 
 /**
+ * A categoria já tem desenho próprio do app (pastas, compactados, PDF e o acervo de
+ * tipos). Nesses casos o ícone do Windows não entra: o desenho da interface é a
+ * identidade do explorer. O ícone do sistema fica para os tipos sem arte própria
+ * (txt, doc, exe, bat, jsx…), onde ele é o único jeito de o arquivo ser reconhecido.
+ */
+export function temIconeProprio(categoria, ext) {
+  if (categoria === 'compactado' || categoria === 'pasta') return true;
+  if (ext === 'pdf') return true;
+
+  return Boolean(IMAGENS[VETORES.includes(ext) ? 'vetor' : categoria]);
+}
+
+/**
  * @param {string} categoria categoria vinda de format.categoria()
  * @param {string} [ext] extensão, para casos como .ai/.svg
  */
