@@ -35,6 +35,12 @@ public sealed class IpcBridge
         _web.WebMessageReceived += OnMessageReceived;
     }
 
+    /// <summary>
+    /// Objetos DOM que vieram anexados na ultima mensagem (postMessageWithAdditionalObjects).
+    /// E por aqui que o caminho de um arquivo arrastado de fora chega ao host.
+    /// </summary>
+    public IReadOnlyList<object> ObjetosAdicionais { get; private set; } = Array.Empty<object>();
+
     public void Emit(string evt, object? data)
     {
         string payload;
@@ -61,15 +67,43 @@ public sealed class IpcBridge
         }, null);
     }
 
+    /// <summary>
+    /// postMessageWithAdditionalObjects entrega a mensagem como uma **string** JSON dentro do
+    /// documento; as chamadas normais entregam o objeto. Desembrulha para que os dois
+    /// formatos cheguem iguais ao roteador.
+    /// </summary>
+    private static string Desembrulhar(string mensagem)
+    {
+        if (string.IsNullOrWhiteSpace(mensagem) || mensagem.TrimStart()[0] != '"')
+        {
+            return mensagem;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(mensagem);
+            return doc.RootElement.ValueKind == JsonValueKind.String
+                ? doc.RootElement.GetString() ?? mensagem
+                : mensagem;
+        }
+        catch
+        {
+            return mensagem;
+        }
+    }
+
     private async void OnMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
         long id = 0;
         try
         {
+            // Objetos anexados (arquivos arrastados de fora) valem para o comando desta mensagem.
+            ObjetosAdicionais = e.AdditionalObjects ?? (IReadOnlyList<object>)Array.Empty<object>();
+
             // Marca a janela de origem: os eventos da operacao voltam para ela.
             _aoIniciarComando?.Invoke();
 
-            using var doc = JsonDocument.Parse(e.WebMessageAsJson);
+            using var doc = JsonDocument.Parse(Desembrulhar(e.WebMessageAsJson));
             var root = doc.RootElement;
 
             id = root.TryGetProperty("id", out var idEl) ? idEl.GetInt64() : 0;

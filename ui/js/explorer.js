@@ -125,13 +125,10 @@ export function iniciarExplorer() {
 
     lateral.destacarFavoritos(false);
     if (!state.caminho) return;
-    await colarCaminhos(dados.caminhos, false);
-  });
 
-  on('os.dragOver', (dados) => {
-    if (!dados || !Number.isFinite(dados.x) || !Number.isFinite(dados.y)) return;
-    const escala = window.devicePixelRatio || 1;
-    lateral.destacarFavoritos(lateral.alvoFavoritos(dados.x / escala, dados.y / escala));
+    // Mesmo comportamento do Explorer: arrastar dentro da mesma unidade move (Ctrl copia,
+    // Shift move); vindo de outra unidade, copia.
+    await colarCaminhos(dados.caminhos, dados.mover === true);
   });
 
   // Outra janela comecou um arraste: se o cursor estiver sobre esta, mostra o alvo.
@@ -146,6 +143,7 @@ export function iniciarExplorer() {
   });
 
   iniciarArrasteExterno();
+  ligarArrasteDeFora();
   iniciarLacoSelecao();
 
   on('op.progress', (dados) => {
@@ -169,6 +167,69 @@ export function iniciarExplorer() {
 }
 
 // ---------- arraste (dentro, entre janelas e para fora do app) ----------
+
+/**
+ * Arraste vindo de fora (Explorer ou outro app). O Chromium entrega os eventos HTML5, mas
+ * esconde o caminho do arquivo do JavaScript: quem sabe o caminho e o host, que recebe os
+ * arquivos anexados na mensagem (`postMessageWithAdditionalObjects` -> CoreWebView2File).
+ * O host decide copiar ou mover (Ctrl copia, Shift move, mesma unidade move) e devolve o
+ * `os.drop` de sempre, entao o resto da interface nao muda.
+ */
+function ligarArrasteDeFora() {
+  const temArquivos = (evento) => [...(evento.dataTransfer?.types ?? [])].includes('Files');
+
+  document.addEventListener('dragover', (evento) => {
+    // Todo arraste sobre a janela é interceptado: sem o preventDefault o Chromium
+    // navegaria para o arquivo/link solto em vez de soltar.
+    evento.preventDefault();
+
+    if (!temArquivos(evento)) {
+      evento.dataTransfer.dropEffect = 'none';
+      return;
+    }
+
+    // Cursor: Ctrl/copiar por padrão (o host decide mover ou copiar como o Explorer).
+    const permitido = evento.dataTransfer?.effectAllowed ?? '';
+    const podeMover = !permitido || permitido === 'uninitialized' || permitido.includes('move');
+    evento.dataTransfer.dropEffect = evento.shiftKey && podeMover ? 'move' : 'copy';
+
+    lateral.destacarFavoritos(lateral.alvoFavoritos(evento.clientX, evento.clientY));
+  });
+
+  document.addEventListener('dragleave', (evento) => {
+    if (evento.clientX <= 0 && evento.clientY <= 0) lateral.destacarFavoritos(false);
+  });
+
+  document.addEventListener('drop', (evento) => {
+    evento.preventDefault();
+
+    if (!temArquivos(evento)) return;
+
+    lateral.destacarFavoritos(false);
+
+    const arquivos = [...(evento.dataTransfer?.files ?? [])];
+    if (arquivos.length === 0) return;
+
+    const escala = window.devicePixelRatio || 1;
+    const mensagem = {
+      id: Date.now(),
+      cmd: 'os.arquivos',
+      args: {
+        // O host compara o ponto com a lista em pixels fisicos (como o resto do app).
+        x: Math.round(evento.clientX * escala),
+        y: Math.round(evento.clientY * escala),
+        ctrl: evento.ctrlKey,
+        shift: evento.shiftKey,
+      },
+    };
+
+    try {
+      window.chrome?.webview?.postMessageWithAdditionalObjects?.(JSON.stringify(mensagem), arquivos);
+    } catch {
+      ui.toast(t('erro.geral', { mensagem: 'arraste nao suportado' }), 'erro');
+    }
+  });
+}
 
 /**
  * Um arraste comeca em cada botao esquerdo apertado sobre um item, mas o "soltar" so

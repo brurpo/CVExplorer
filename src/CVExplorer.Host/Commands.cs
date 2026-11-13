@@ -332,6 +332,21 @@ public static class Commands
 
         // ---------- arraste entre janelas ----------
 
+        // Arquivos soltos na janela vindos de fora (Explorer, outro app). O caminho real
+        // chega anexado na mensagem (CoreWebView2File), nao no JSON.
+        Add("os.arquivos", (args, _) =>
+        {
+            var janela = host.JanelaDoContexto;
+            janela?.ReceberArquivosSoltos(
+                janela.ArquivosDaMensagem(),
+                Int(args, "x", 0),
+                Int(args, "y", 0),
+                Bool(args, "ctrl", false),
+                Bool(args, "shift", false));
+
+            return Task.FromResult<object?>(new { ok = true });
+        });
+
         Add("arraste.iniciar", (args, _) =>
         {
             var origem = host.JanelaDoContexto;

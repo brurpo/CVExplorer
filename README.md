@@ -175,6 +175,15 @@ No estilo do Explorer, sem lista de projetos:
 - Navegação por migalhas, histórico, teclado (`Enter`, `Backspace`, `F2`, `Delete`, setas, `Ctrl+A`).
 - Copiar / recortar / colar, arrastar do Explorer, conflitos com decisão explícita
   (*substituir / manter ambos / pular / cancelar*, com "aplicar a todos").
+- **Arrastar de fora para dentro** (Explorer, outro app): solte arquivos ou pastas na janela e eles
+  entram na pasta aberta como se fossem colados — com o **diálogo de conflito** quando o nome já
+  existe (nada é sobrescrito sem você escolher), progresso e o mesmo diálogo de conversão de vídeo.
+  O comportamento é o do Explorer: **Ctrl copia**, **Shift move** e, sem tecla, mover dentro da
+  mesma unidade e copiar entre unidades. O caminho real do arquivo não existe no JavaScript do
+  navegador, então a página manda os `File` soltos anexados na mensagem
+  (`postMessageWithAdditionalObjects`) e o host lê `CoreWebView2File.Path` — por isso o app usa o
+  drop do próprio Chromium (`AllowExternalDrop = true`) em vez do arraste do Windows Forms, que
+  nunca chegaria ao formulário (o alvo de drop fica na janela filha do WebView2, em outro processo).
 - Cópia progressiva com cancelamento; nomes nunca colidem (`arquivo (2).ext`). O card de progresso
   desaparece ao terminar — operação encerrada não pode ser "ressuscitada" por um evento atrasado do
   host (era o que deixava *"Movendo 1 item"* parado em 100%).

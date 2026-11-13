@@ -120,51 +120,12 @@ public sealed class Janela : Form
         }
 
         _web.Dock = DockStyle.Fill;
-        // AllowExternalDrop=false faz o controle entregar o drop do Explorer para o app,
-        // com caminhos completos (o navegador so veria nomes de arquivo).
-        _web.AllowExternalDrop = false;
-        _web.DragEnter += (_, e) =>
-        {
-            if (RecusarArrasteProprio(e))
-            {
-                return;
-            }
-
-            if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true)
-            {
-                e.Effect = DragDropEffects.Copy;
-                Emitir("os.dragOver", PontoDoMouse(e.X, e.Y));
-            }
-        };
-
-        _web.DragOver += (_, e) =>
-        {
-            if (RecusarArrasteProprio(e))
-            {
-                return;
-            }
-
-            if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true)
-            {
-                e.Effect = DragDropEffects.Copy;
-                Emitir("os.dragOver", PontoDoMouse(e.X, e.Y));
-            }
-        };
-
-        _web.DragDrop += (_, e) =>
-        {
-            if (RecusarArrasteProprio(e))
-            {
-                return;
-            }
-
-            if (e.Data?.GetData(DataFormats.FileDrop) is string[] caminhos)
-            {
-                var ponto = PontoDoMouse(e.X, e.Y);
-                Emitir("os.drop", new { caminhos, x = ponto.x, y = ponto.y });
-                _host.TrazerParaFrente(this);
-            }
-        };
+        // AllowExternalDrop=true: quem recebe o arraste de fora e o Chromium, e a pagina
+        // ganha os eventos HTML5 de drag/drop. Os eventos do WinForms nao servem aqui —
+        // o alvo de drop fica na janela filha do WebView2 (outro processo), entao o OLE
+        // nunca chega no formulario. O caminho real do arquivo vem anexado na mensagem
+        // (CoreWebView2File.Path), porque o navegador esconde o caminho do JavaScript.
+        _web.AllowExternalDrop = true;
 
         Controls.Add(_web);
 
@@ -199,20 +160,71 @@ public sealed class Janela : Form
         Activated += (_, _) => _host.JanelaAtiva = this;
     }
 
-    /// <summary>
-    /// O arraste nasceu aqui dentro e virou um arraste do Windows: soltar de volta na
-    /// janela de origem nao faz sentido (os arquivos ja estao na pasta), entao recusa em
-    /// vez de copiar para o mesmo lugar. Nas outras janelas vale como drop normal.
-    /// </summary>
-    private bool RecusarArrasteProprio(DragEventArgs e)
+    /// <summary>Caminhos dos arquivos que vieram anexados na ultima mensagem da interface.</summary>
+    public IReadOnlyList<string> ArquivosDaMensagem()
     {
-        if (!_host.Arraste.NativoEmCurso || !ReferenceEquals(_host.Arraste.Origem, this))
+        var objetos = _bridge?.ObjetosAdicionais;
+        if (objetos is null || objetos.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        var caminhos = new List<string>(objetos.Count);
+        foreach (var objeto in objetos)
+        {
+            if (objeto is CoreWebView2File arquivo && !string.IsNullOrWhiteSpace(arquivo.Path))
+            {
+                caminhos.Add(arquivo.Path);
+            }
+        }
+
+        return caminhos;
+    }
+
+    /// <summary>
+    /// Arquivos soltos na janela vindos de fora (Explorer, outro app). Os caminhos vem do
+    /// objeto DOM anexado na mensagem (CoreWebView2File.Path) — o navegador nao entrega o
+    /// caminho para o JavaScript.
+    /// </summary>
+    public void ReceberArquivosSoltos(IReadOnlyList<string> caminhos, int x, int y, bool ctrl, bool shift)
+    {
+        if (caminhos.Count == 0)
+        {
+            return;
+        }
+
+        // Soltou de volta na janela de onde o arraste saiu: os arquivos ja estao aqui.
+        if (_host.Arraste.NativoEmCurso && ReferenceEquals(_host.Arraste.Origem, this))
+        {
+            return;
+        }
+
+        // Explorer: Ctrl copia, Shift move; sem tecla, move dentro da unidade e copia entre
+        // unidades (a operacao e feita aqui, entao o efeito devolvido ao Windows e sempre
+        // "copiar" e o arquivo de origem so sai quando somos nos que movemos).
+        var destino = PastaAtual;
+        var mover = ctrl
+            ? false
+            : shift || (!string.IsNullOrWhiteSpace(destino) && MesmaUnidade(caminhos[0], destino));
+
+        Emitir("os.drop", new { caminhos, x, y, mover });
+        _host.TrazerParaFrente(this);
+    }
+
+    private static bool MesmaUnidade(string origem, string destino)
+    {
+        try
+        {
+            var raizOrigem = Path.GetPathRoot(Path.GetFullPath(origem));
+            var raizDestino = Path.GetPathRoot(Path.GetFullPath(destino));
+
+            return !string.IsNullOrEmpty(raizOrigem)
+                && string.Equals(raizOrigem, raizDestino, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
         {
             return false;
         }
-
-        e.Effect = DragDropEffects.None;
-        return true;
     }
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -266,12 +278,26 @@ public sealed class Janela : Form
     /// <summary>
     /// Entrega o arraste ao Windows com os caminhos reais (CF_HDROP): e assim que soltar
     /// no Explorer, no After Effects ou em qualquer app funciona — com o arquivo original,
-    /// sem copia temporaria. Devolve true se o destino levou os arquivos (move).
+    /// sem copia temporaria. Publica tambem os formatos que o Explorer publica
+    /// ("FileNameW"/"Preferred DropEffect"): varios apps so aceitam o arraste quando eles
+    /// estao no objeto de dados. Devolve true se o destino levou os arquivos (move).
     /// Precisa rodar no thread da janela: o DoDragDrop e um loop modal ate soltar.
     /// </summary>
     public bool ArrastarParaFora(IReadOnlyList<string> caminhos, bool copiar)
     {
-        var dados = new DataObject(DataFormats.FileDrop, caminhos.ToArray());
+        var dados = new DataObject();
+        dados.SetData(DataFormats.FileDrop, caminhos.ToArray());
+
+        if (caminhos.Count > 0)
+        {
+            dados.SetData("FileNameW", caminhos[0]);
+            dados.SetData("FileName", caminhos[0]);
+        }
+
+        // DROPEFFECT_COPY = 1, DROPEFFECT_MOVE = 2 (o mesmo valor que o Explorer publica).
+        var preferido = new MemoryStream(BitConverter.GetBytes(copiar ? 1 : 2));
+        dados.SetData("Preferred DropEffect", preferido);
+
         var efeitos = copiar ? DragDropEffects.Copy : DragDropEffects.Copy | DragDropEffects.Move;
 
         try
@@ -606,13 +632,6 @@ public sealed class Janela : Form
     }
 
     private void Emitir(string evt, object? data) => Enviar(evt, data);
-
-    /// <summary>Converte o ponto do arraste (tela, pixels físicos) para a área da página.</summary>
-    private (int x, int y) PontoDoMouse(int telaX, int telaY)
-    {
-        var ponto = _web.PointToClient(new Point(telaX, telaY));
-        return (ponto.X, ponto.Y);
-    }
 
     private void RestaurarJanela()
     {
