@@ -274,6 +274,13 @@ o ícone vem do arquivo — então recompilar um `.exe` troca o ícone sozinho. 
 miniaturas, e a conversão mantém o canal alfa (o `Image.FromHbitmap` do GDI+ jogaria a
 transparência fora e o ícone sairia com fundo preto).
 
+Dentro de um compactado o caminho não existe no disco e o Shell só devolve o ícone do *tipo*
+(era o caso do `.exe` aparecendo com o ícone genérico de aplicativo): a entrada é extraída uma
+vez para o temporário, o ícone é lido do arquivo real e o temporário é apagado na hora — com
+limite de 128 MB para não pagar esse custo à toa. Como reforço, quando o handler do Shell devolve
+um ícone genérico o app lê o **grupo de ícones do próprio PE** (`PrivateExtractIcons`, 256 → 64 →
+48 → 32).
+
 | Formato | Como é gerada |
 |---|---|
 | JPG, PNG, WEBP, GIF, BMP, TIFF, TGA, HEIC, JXL | Shell do Windows → Magick.NET |

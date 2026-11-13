@@ -54,7 +54,7 @@ public sealed class AppHost
     public ThumbnailService Thumbs { get; }
 
     /// <summary>Icones do tipo (ou do proprio arquivo, como o de cada .exe) em PNG de 256 px.</summary>
-    public IconService Icones { get; } = new();
+    public IconService Icones { get; }
 
     /// <summary>Modelos 3D: resolve o formato que o navegador desenha (USD/Alembic via Blender).</summary>
     public ModeloService Modelos { get; } = new();
@@ -113,6 +113,7 @@ public sealed class AppHost
         Files = new FileOperations(Conflicts.AskAsync, progress => EmitAsync("op.progress", progress));
         Paste = new PasteService(Probe, Transcode, Files, Settings);
         Thumbs = new ThumbnailService(Settings, Ffmpeg);
+        Icones = new IconService(Archives);
         Arraste = new ArrasteService(this);
         Abas = new AbasService(this);
     }

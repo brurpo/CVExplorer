@@ -56,6 +56,17 @@ internal static class ShellThumbnail
     private static extern bool DrawIconEx(
         IntPtr hdc, int x, int y, IntPtr hIcon, int largura, int altura, uint passo, IntPtr pincel, uint flags);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint PrivateExtractIcons(
+        string arquivo,
+        int indice,
+        int largura,
+        int altura,
+        IntPtr[] icones,
+        uint[] ids,
+        uint quantidade,
+        uint flags);
+
     [DllImport("gdi32.dll")]
     private static extern int GetObject(IntPtr hObject, int tamanho, ref BITMAP estrutura);
 
@@ -186,10 +197,14 @@ internal static class ShellThumbnail
                 request.Completion.TrySetResult(
                     request.Icone ? RenderIcon(request.Path, request.Size) : Render(request.Path, request.Size));
             }
+            catch (COMException)
+            {
+                // 0x8004B200 (sem miniatura/icone neste formato) e o caminho normal:
+                // a cadeia de provedores assume a partir daqui.
+                request.Completion.TrySetResult(null);
+            }
             catch (Exception ex)
             {
-                // Sem handler instalado para o formato (ex.: .blend, .svg, .exr) e um
-                // caminho esperado; mas falha de conversao precisa aparecer no log.
                 Log.Error($"Falha ao obter imagem do Shell: {request.Path}", ex);
                 request.Completion.TrySetResult(null);
             }
@@ -278,9 +293,62 @@ internal static class ShellThumbnail
             }
         }
 
-        // Caminho virtual (unidade de rede sem handler, item de compactado): icone do
+        // 2) Icone lido direto do arquivo (PE, .ico, .lnk): o mesmo caminho que o Explorer
+        // usa e que continua valendo quando o handler do Shell devolve o icone do tipo.
+        var extraido = PngFromPrivateExtract(path);
+        if (extraido is not null)
+        {
+            return extraido;
+        }
+
+        // 3) Caminho virtual (unidade de rede sem handler, item de compactado): icone do
         // tipo em 32 px pelo SHGetFileInfo, que e o que existe sem instalar nada.
         return PngFromHIcon(path, size);
+    }
+
+    /// <summary>Icone de dentro do arquivo (grupo de icones do PE), no maior tamanho.</summary>
+    private static byte[]? PngFromPrivateExtract(string path)
+    {
+        foreach (var lado in new[] { 256, 64, 48, 32 })
+        {
+            var icones = new IntPtr[1];
+            var ids = new uint[1];
+            var total = PrivateExtractIcons(path, 0, lado, lado, icones, ids, 1, 0);
+
+            if (total == 0 || icones[0] == IntPtr.Zero)
+            {
+                continue;
+            }
+
+            try
+            {
+                using var bitmap = new Bitmap(lado, lado, PixelFormat.Format32bppArgb);
+                using (var graphics = Graphics.FromImage(bitmap))
+                {
+                    graphics.CompositingMode = CompositingMode.SourceCopy;
+                    graphics.Clear(Color.Transparent);
+                    var hdc = graphics.GetHdc();
+                    try
+                    {
+                        DrawIconEx(hdc, 0, 0, icones[0], lado, lado, 0, IntPtr.Zero, 0x0003 /* DI_NORMAL */);
+                    }
+                    finally
+                    {
+                        graphics.ReleaseHdc(hdc);
+                    }
+                }
+
+                using var stream = new MemoryStream();
+                bitmap.Save(stream, ImageFormat.Png);
+                return stream.ToArray();
+            }
+            finally
+            {
+                DestroyIcon(icones[0]);
+            }
+        }
+
+        return null;
     }
 
     private static byte[]? PngFromHIcon(string path, int size)
