@@ -164,6 +164,14 @@ No estilo do Explorer, sem lista de projetos:
   mostra *"Solte para mover aqui"* (ou *copiar*, com `Ctrl`) e a operação roda com progresso.
   Também move/copia para uma pasta solta dentro da mesma janela. Como cada WebView2 captura o
   mouse, quem acompanha o cursor é o host (`GetCursorPos`), não o navegador.
+- **Arrastar para fora do app**: levando os itens para **outra janela do app** o arraste continua
+  interno; saindo de todas as janelas, o host entrega o arraste ao Windows com os **caminhos reais**
+  (`CF_HDROP`) e você solta no Explorer, no After Effects, no Blender, em qualquer app — sem cópia
+  temporária e com pastas, vários itens e atalhos intactos. O arraste do Chromium não serve para
+  isso (ele copiaria o arquivo para a pasta temporária), então o host assume: toma a captura do
+  mouse do WebView2 e chama o `DoDragDrop` com o mesmo caminho que o item tem no disco. Se o destino
+  **mover** os arquivos, a lista se atualiza sozinha; soltar de volta na janela de origem é recusado
+  (os arquivos já estão lá).
 - Navegação por migalhas, histórico, teclado (`Enter`, `Backspace`, `F2`, `Delete`, setas, `Ctrl+A`).
 - Copiar / recortar / colar, arrastar do Explorer, conflitos com decisão explícita
   (*substituir / manter ambos / pular / cancelar*, com "aplicar a todos").

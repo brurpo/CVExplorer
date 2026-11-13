@@ -168,13 +168,26 @@ export function iniciarExplorer() {
   });
 }
 
-// ---------- arraste (dentro e entre janelas) ----------
+// ---------- arraste (dentro, entre janelas e para fora do app) ----------
+
+/**
+ * Um arraste comeca em cada botao esquerdo apertado sobre um item, mas o "soltar" so
+ * decide o que fazer depois do movimento. Quando o host avisa que o arraste virou um
+ * arraste do Windows (cursor saiu do app), o ponteiro nao volta mais: este sinalizador
+ * impede que o proximo clique solto no app dispare um move/copia fantasma.
+ */
+let arrasteAtivo = false;
+
+/** Encerra o arraste em curso (tira os listeners). O host chama quando o arraste sai do app. */
+let encerrarArraste = null;
 
 /**
  * Arrastar entre janelas nao pode ser HTML5 drag-and-drop: cada WebView2 e um
  * navegador separado e captura o mouse no mousedown, entao o "soltar" nunca chega
  * na outra janela. O host acompanha o cursor de verdade e entrega os arquivos na
  * pasta atual da janela alvo; aqui so avisamos o inicio/fim do arraste.
+ * Saindo de todas as janelas do app, o host troca por um arraste do Windows
+ * (CF_HDROP com os caminhos reais), que e o que faz soltar no Explorer funcionar.
  */
 function iniciarArrasteExterno() {
   area.addEventListener('pointerdown', (evento) => {
@@ -184,12 +197,11 @@ function iniciarArrasteExterno() {
     if (!alvo || evento.target.closest('button, input, .alca')) return;
 
     const inicio = { x: evento.clientX, y: evento.clientY };
-    let ativo = false;
     let caminhos = [];
     let copiar = false;
 
     const mover = (e) => {
-      if (!ativo) {
+      if (!arrasteAtivo) {
         if (Math.abs(e.clientX - inicio.x) < 6 && Math.abs(e.clientY - inicio.y) < 6) return;
 
         const caminhoAlvo = alvo.dataset.caminho;
@@ -203,7 +215,7 @@ function iniciarArrasteExterno() {
         if (caminhos.length === 0) return;
 
         copiar = e.ctrlKey;
-        ativo = true;
+        arrasteAtivo = true;
         document.body.classList.add('arrastando');
         call('arraste.iniciar', { caminhos, copiar }).catch(() => {});
       }
@@ -212,8 +224,9 @@ function iniciarArrasteExterno() {
     };
 
     const soltar = (e) => {
+      const estavaAtivo = arrasteAtivo;
       encerrar();
-      if (!ativo) return;
+      if (!estavaAtivo) return;
 
       // Soltou em cima dos Favoritos: fixa o item em vez de mover na pasta.
       if (lateral.alvoFavoritos(e.clientX, e.clientY)) {
@@ -238,11 +251,14 @@ function iniciarArrasteExterno() {
     };
 
     const cancelar = () => {
+      const estavaAtivo = arrasteAtivo;
       encerrar();
-      if (ativo) call('arraste.cancelar').catch(() => {});
+      if (estavaAtivo) call('arraste.cancelar').catch(() => {});
     };
 
     function encerrar() {
+      arrasteAtivo = false;
+      encerrarArraste = null;
       window.removeEventListener('pointermove', mover);
       window.removeEventListener('pointerup', soltar);
       window.removeEventListener('pointercancel', cancelar);
@@ -250,6 +266,7 @@ function iniciarArrasteExterno() {
       lateral.destacarFavoritos(false);
     }
 
+    encerrarArraste = encerrar;
     window.addEventListener('pointermove', mover);
     window.addEventListener('pointerup', soltar);
     window.addEventListener('pointercancel', cancelar);
@@ -273,13 +290,29 @@ async function entregarEm(destino, caminhos, copiar) {
 
 function mostrarAlvoArraste(dados) {
   const overlay = document.getElementById('arraste-alvo');
-  if (!overlay) return;
-
   const meuId = state.info?.janela;
-  if (!dados?.ativo || !dados.alvo || dados.alvo !== meuId) {
-    overlay.hidden = true;
+
+  if (!dados?.ativo) {
+    if (overlay) overlay.hidden = true;
+
+    // O arraste virou um arraste do Windows (saiu do app): o ponteiro nao volta mais para
+    // ca, entao encerra o arraste daqui e, se o destino levou os arquivos, recarrega.
+    if (dados?.externo) {
+      arrasteAtivo = false;
+      encerrarArraste?.();
+
+      if (dados.moveu) recarregar();
+    }
+
     return;
   }
+
+  if (!dados.alvo || dados.alvo !== meuId) {
+    if (overlay) overlay.hidden = true;
+    return;
+  }
+
+  if (!overlay) return;
 
   overlay.hidden = false;
   overlay.querySelector('.arraste-texto').textContent = dados.copiar

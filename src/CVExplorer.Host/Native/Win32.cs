@@ -33,6 +33,43 @@ internal static class Win32
     /// <summary>Botão esquerdo do mouse pressionado agora (independe de quem tem o foco).</summary>
     public static bool BotaoEsquerdoPressionado() => (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(Ponto ponto);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+
+    private const uint GA_ROOT = 2;
+
+    /// <summary>
+    /// Janela de nível superior que está **visível** sob o cursor (z-order de verdade, não
+    /// os limites da janela): com outra janela por cima do app, o cursor já não está nele.
+    /// </summary>
+    public static IntPtr JanelaRaizNoCursor(int x, int y)
+    {
+        var janela = WindowFromPoint(new Ponto { X = x, Y = y });
+        return janela == IntPtr.Zero ? IntPtr.Zero : GetAncestor(janela, GA_ROOT);
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetCapture(IntPtr hWnd);
+
+    /// <summary>
+    /// Toma a captura do mouse para a janela. O Chromium do WebView2 fica com ela no
+    /// mousedown; sem isso o loop do DoDragDrop nao assume o arraste.
+    /// </summary>
+    public static void CapturarMouse(IntPtr janela)
+    {
+        try
+        {
+            SetCapture(janela);
+        }
+        catch
+        {
+            // sem captura o DoDragDrop decide sozinho se consegue seguir
+        }
+    }
+
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern bool GetDiskFreeSpaceEx(
         string lpDirectoryName,

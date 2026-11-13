@@ -125,6 +125,11 @@ public sealed class Janela : Form
         _web.AllowExternalDrop = false;
         _web.DragEnter += (_, e) =>
         {
+            if (RecusarArrasteProprio(e))
+            {
+                return;
+            }
+
             if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true)
             {
                 e.Effect = DragDropEffects.Copy;
@@ -134,6 +139,11 @@ public sealed class Janela : Form
 
         _web.DragOver += (_, e) =>
         {
+            if (RecusarArrasteProprio(e))
+            {
+                return;
+            }
+
             if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true)
             {
                 e.Effect = DragDropEffects.Copy;
@@ -143,6 +153,11 @@ public sealed class Janela : Form
 
         _web.DragDrop += (_, e) =>
         {
+            if (RecusarArrasteProprio(e))
+            {
+                return;
+            }
+
             if (e.Data?.GetData(DataFormats.FileDrop) is string[] caminhos)
             {
                 var ponto = PontoDoMouse(e.X, e.Y);
@@ -182,6 +197,22 @@ public sealed class Janela : Form
         };
 
         Activated += (_, _) => _host.JanelaAtiva = this;
+    }
+
+    /// <summary>
+    /// O arraste nasceu aqui dentro e virou um arraste do Windows: soltar de volta na
+    /// janela de origem nao faz sentido (os arquivos ja estao na pasta), entao recusa em
+    /// vez de copiar para o mesmo lugar. Nas outras janelas vale como drop normal.
+    /// </summary>
+    private bool RecusarArrasteProprio(DragEventArgs e)
+    {
+        if (!_host.Arraste.NativoEmCurso || !ReferenceEquals(_host.Arraste.Origem, this))
+        {
+            return false;
+        }
+
+        e.Effect = DragDropEffects.None;
+        return true;
     }
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -231,6 +262,30 @@ public sealed class Janela : Form
     }
 
     public void Avisar(string evt, object? data) => Emitir(evt, data);
+
+    /// <summary>
+    /// Entrega o arraste ao Windows com os caminhos reais (CF_HDROP): e assim que soltar
+    /// no Explorer, no After Effects ou em qualquer app funciona — com o arquivo original,
+    /// sem copia temporaria. Devolve true se o destino levou os arquivos (move).
+    /// Precisa rodar no thread da janela: o DoDragDrop e um loop modal ate soltar.
+    /// </summary>
+    public bool ArrastarParaFora(IReadOnlyList<string> caminhos, bool copiar)
+    {
+        var dados = new DataObject(DataFormats.FileDrop, caminhos.ToArray());
+        var efeitos = copiar ? DragDropEffects.Copy : DragDropEffects.Copy | DragDropEffects.Move;
+
+        try
+        {
+            Native.Win32.CapturarMouse(Handle);
+            var efeito = DoDragDrop(dados, efeitos);
+            return (efeito & DragDropEffects.Move) != 0;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Falha no arraste para fora do app", ex);
+            return false;
+        }
+    }
 
     /// <summary>Registra algo para executar quando esta janela fechar (ex.: matar o ffmpeg).</summary>
     public void AoFechar(Action acao) => _aoFechar.Add(acao);
