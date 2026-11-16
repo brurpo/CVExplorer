@@ -177,35 +177,33 @@ public sealed class AppHost
         }
     }
 
-    /// <summary>Arraste entre janelas: copia ou move os itens para a pasta da janela alvo.</summary>
-    public async Task EntregarArrasteAsync(
+    /// <summary>
+    /// Arraste entre janelas. A operacao em si fica com a **janela alvo**, pelo mesmo
+    /// caminho do colar: e ela que tem a conversao de video, o dialogo de conflito e o
+    /// progresso. Aqui so decidimos se e mover ou copiar — e mover so vale dentro da
+    /// mesma unidade; entre unidades e sempre copia (mover entre volumes e uma copia
+    /// seguida de apagar, e um erro no meio levaria o original junto).
+    /// </summary>
+    public Task EntregarArrasteAsync(
         IReadOnlyList<string> caminhos,
         string destino,
         bool copiar,
         Janela alvo)
     {
-        var opId = $"arraste-{Guid.NewGuid():N}";
+        var mover = !copiar
+            && caminhos.Count > 0
+            && Volumes.MesmaUnidade(caminhos[0], destino);
+
+        alvo.Enviar("os.drop", new { caminhos, mover });
+
+        // A janela de origem ganhou ou perdeu itens: a lista dela precisa se atualizar.
         var origem = JanelaDoContexto ?? JanelaAtiva;
-
-        try
+        if (origem is not null && !ReferenceEquals(origem, alvo))
         {
-            var resultado = copiar
-                ? await Files.CopyAsync(caminhos, destino, opId, CancellationToken.None).ConfigureAwait(false)
-                : await Files.MoveAsync(caminhos, destino, opId, CancellationToken.None).ConfigureAwait(false);
-
-            alvo.Enviar("dir.refresh", new { caminho = destino });
-            origem?.Enviar("dir.refresh", new { caminho = origem.PastaAtual });
-
-            if (resultado.Erros.Count > 0)
-            {
-                alvo.Enviar("arraste.erro", new { mensagem = resultado.Erros[0] });
-            }
+            origem.Enviar("dir.refresh", new { caminho = origem.PastaAtual });
         }
-        catch (Exception ex)
-        {
-            Log.Error("Falha ao entregar arraste", ex);
-            alvo.Enviar("arraste.erro", new { mensagem = ex.Message });
-        }
+
+        return Task.CompletedTask;
     }
 
     public void Emit(string evt, object? data)

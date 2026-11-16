@@ -163,7 +163,15 @@ No estilo do Explorer, sem lista de projetos:
 - **Arrastar entre janelas**: arraste itens de uma janela e solte em outra — a janela de destino
   mostra *"Solte para mover aqui"* (ou *copiar*, com `Ctrl`) e a operação roda com progresso.
   Também move/copia para uma pasta solta dentro da mesma janela. Como cada WebView2 captura o
-  mouse, quem acompanha o cursor é o host (`GetCursorPos`), não o navegador.
+  mouse, quem acompanha o cursor é o host (`GetCursorPos`), não o navegador. Quem faz a operação é a
+  **janela de destino**, pelo mesmo caminho do colar — então vídeo passa pelo diálogo de conversão e
+  nome repetido passa pelo diálogo de conflito, sem nada ser sobrescrito.
+- **Mover só dentro da mesma unidade**: arrastar **entre unidades é sempre cópia** (mesmo com
+  `Shift`). Mover entre volumes é, por baixo, uma cópia seguida de apagar o original: se algo falhar
+  no meio (disco cheio, rede caindo) o arquivo iria junto. A regra vale para os três caminhos de
+  arraste (entre janelas do app, para uma pasta dentro da janela e vindo do Explorer) e mora em um
+  lugar só (`Volumes.MesmaUnidade`), com testes. Caminho de rede compara servidor +
+  compartilhamento; caminho sem raiz reconhecível nunca move.
 - **Arrastar para fora do app**: levando os itens para **outra janela do app** o arraste continua
   interno; saindo de todas as janelas, o host entrega o arraste ao Windows com os **caminhos reais**
   (`CF_HDROP`) e você solta no Explorer, no After Effects, no Blender, em qualquer app — sem cópia
@@ -171,19 +179,24 @@ No estilo do Explorer, sem lista de projetos:
   isso (ele copiaria o arquivo para a pasta temporária), então o host assume: toma a captura do
   mouse do WebView2 e chama o `DoDragDrop` com o mesmo caminho que o item tem no disco. Se o destino
   **mover** os arquivos, a lista se atualiza sozinha; soltar de volta na janela de origem é recusado
-  (os arquivos já estão lá).
+  (os arquivos já estão lá). Para o arraste sair do app, o cursor precisa ficar **fora das janelas
+  por um instante** (~270 ms): sem isso, cruzar o vão entre duas janelas do app entregava o arraste
+  ao Windows e o soltar se perdia. Arrastar item cujo cartão mostra miniatura (`<img>`) não dispara
+  mais o arraste nativo de imagem do Chromium — era o que impedia vídeo e imagem de arrastar.
 - Navegação por migalhas, histórico, teclado (`Enter`, `Backspace`, `F2`, `Delete`, setas, `Ctrl+A`).
 - Copiar / recortar / colar, arrastar do Explorer, conflitos com decisão explícita
   (*substituir / manter ambos / pular / cancelar*, com "aplicar a todos").
 - **Arrastar de fora para dentro** (Explorer, outro app): solte arquivos ou pastas na janela e eles
   entram na pasta aberta como se fossem colados — com o **diálogo de conflito** quando o nome já
   existe (nada é sobrescrito sem você escolher), progresso e o mesmo diálogo de conversão de vídeo.
-  O comportamento é o do Explorer: **Ctrl copia**, **Shift move** e, sem tecla, mover dentro da
-  mesma unidade e copiar entre unidades. O caminho real do arquivo não existe no JavaScript do
+  **Ctrl copia**; sem `Ctrl`, move na mesma unidade e **copia entre unidades** (regra igual à do
+  arraste interno). O caminho real do arquivo não existe no JavaScript do
   navegador, então a página manda os `File` soltos anexados na mensagem
   (`postMessageWithAdditionalObjects`) e o host lê `CoreWebView2File.Path` — por isso o app usa o
   drop do próprio Chromium (`AllowExternalDrop = true`) em vez do arraste do Windows Forms, que
   nunca chegaria ao formulário (o alvo de drop fica na janela filha do WebView2, em outro processo).
+  O cursor mostra sempre *"copiar"*: quem executa a operação é o app, e informar *move* ao programa
+  de origem faria ele apagar os arquivos por conta própria.
 - Cópia progressiva com cancelamento; nomes nunca colidem (`arquivo (2).ext`). O card de progresso
   desaparece ao terminar — operação encerrada não pode ser "ressuscitada" por um evento atrasado do
   host (era o que deixava *"Movendo 1 item"* parado em 100%).

@@ -501,6 +501,10 @@ body.redimensionando-preview * { cursor: col-resize !important; user-select: non
   height: 100%;
   object-fit: cover;
   display: block;
+  /* O arraste dos itens é do app (host). Sem isto o Chromium começa um arraste nativo
+     da imagem e cancela o ponteiro, então vídeo/imagem nunca chegava a arrastar. */
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 
 .tile-icone { color: var(--text-2); }

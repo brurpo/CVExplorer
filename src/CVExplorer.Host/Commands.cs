@@ -341,8 +341,7 @@ public static class Commands
                 janela.ArquivosDaMensagem(),
                 Int(args, "x", 0),
                 Int(args, "y", 0),
-                Bool(args, "ctrl", false),
-                Bool(args, "shift", false));
+                Bool(args, "ctrl", false));
 
             return Task.FromResult<object?>(new { ok = true });
         });

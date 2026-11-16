@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Drawing;
 using System.Runtime.InteropServices;
+using CVExplorer.Host.Features.FileSystem;
 using CVExplorer.Host.Ipc;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -186,7 +187,7 @@ public sealed class Janela : Form
     /// objeto DOM anexado na mensagem (CoreWebView2File.Path) — o navegador nao entrega o
     /// caminho para o JavaScript.
     /// </summary>
-    public void ReceberArquivosSoltos(IReadOnlyList<string> caminhos, int x, int y, bool ctrl, bool shift)
+    public void ReceberArquivosSoltos(IReadOnlyList<string> caminhos, int x, int y, bool ctrl)
     {
         if (caminhos.Count == 0)
         {
@@ -199,33 +200,20 @@ public sealed class Janela : Form
             return;
         }
 
-        // Explorer: Ctrl copia, Shift move; sem tecla, move dentro da unidade e copia entre
-        // unidades (a operacao e feita aqui, entao o efeito devolvido ao Windows e sempre
-        // "copiar" e o arquivo de origem so sai quando somos nos que movemos).
+        // Ctrl copia. Sem Ctrl, move **so dentro da mesma unidade**: entre unidades e
+        // sempre copia (mover entre volumes e copia + apagar o original, e um erro no
+        // meio levaria o arquivo junto). A operacao e feita aqui, entao o efeito devolvido
+        // ao Windows e sempre "copiar" — o arquivo de origem so sai quando somos nos que
+        // movemos.
         var destino = PastaAtual;
-        var mover = ctrl
-            ? false
-            : shift || (!string.IsNullOrWhiteSpace(destino) && MesmaUnidade(caminhos[0], destino));
+        var mover = !ctrl
+            && !string.IsNullOrWhiteSpace(destino)
+            && Volumes.MesmaUnidade(caminhos[0], destino);
 
         Emitir("os.drop", new { caminhos, x, y, mover });
         _host.TrazerParaFrente(this);
     }
 
-    private static bool MesmaUnidade(string origem, string destino)
-    {
-        try
-        {
-            var raizOrigem = Path.GetPathRoot(Path.GetFullPath(origem));
-            var raizDestino = Path.GetPathRoot(Path.GetFullPath(destino));
-
-            return !string.IsNullOrEmpty(raizOrigem)
-                && string.Equals(raizOrigem, raizDestino, StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
-        }
-    }
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public string Id { get; } = Guid.NewGuid().ToString("N")[..8];

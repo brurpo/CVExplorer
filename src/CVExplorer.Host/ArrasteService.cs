@@ -17,6 +17,15 @@ public sealed class ArrasteService
     private string? _destinoAtual;
     private bool _nativo;
 
+    /// <summary>
+    /// Quantas amostras seguidas o cursor precisa passar fora do app antes de o arraste
+    /// virar um arraste do Windows. Sem isso, cruzar o vao entre duas janelas (ou uma
+    /// janela por cima do app) entregava o arraste ao Windows e nada era solto.
+    /// </summary>
+    private const int AmostrasForaDoApp = 3;
+
+    private int _foraDoApp;
+
     public ArrasteService(AppHost host) => _host = host;
 
     public bool Ativo { get; private set; }
@@ -52,6 +61,7 @@ public sealed class ArrasteService
             Ativo = caminhos.Count > 0;
             _destinoAtual = null;
             _nativo = false;
+            _foraDoApp = 0;
         }
 
         if (!Ativo)
@@ -143,11 +153,22 @@ public sealed class ArrasteService
 
         var alvo = AlvoNoCursor();
 
-        // Fora de todas as janelas do app: daqui para frente quem arrasta e o Windows.
-        if (alvo is null && !SobreOApp())
+        if (alvo is not null || SobreOApp())
         {
-            IniciarNativo();
-            return;
+            _foraDoApp = 0;
+        }
+        else
+        {
+            // Passar pelo vao entre duas janelas (ou por cima de outra janela) nao pode
+            // entregar o arraste ao Windows: so vale depois de o cursor ficar fora do app
+            // por algumas amostras seguidas (o relogio roda a cada ~90 ms).
+            _foraDoApp++;
+
+            if (_foraDoApp >= AmostrasForaDoApp)
+            {
+                IniciarNativo();
+                return;
+            }
         }
 
         var destino = alvo is null ? null : $"{alvo.Id}|{alvo.PastaAtual}";

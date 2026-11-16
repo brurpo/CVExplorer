@@ -189,10 +189,10 @@ function ligarArrasteDeFora() {
       return;
     }
 
-    // Cursor: Ctrl/copiar por padrão (o host decide mover ou copiar como o Explorer).
-    const permitido = evento.dataTransfer?.effectAllowed ?? '';
-    const podeMover = !permitido || permitido === 'uninitialized' || permitido.includes('move');
-    evento.dataTransfer.dropEffect = evento.shiftKey && podeMover ? 'move' : 'copy';
+    // Sempre "copiar": quem executa a operação é o host (copiar ou mover, conforme a
+    // unidade), e informar "mover" aqui faria o app de origem apagar os arquivos por
+    // conta própria — a origem só pode sair quando somos nós que movemos.
+    evento.dataTransfer.dropEffect = 'copy';
 
     lateral.destacarFavoritos(lateral.alvoFavoritos(evento.clientX, evento.clientY));
   });
@@ -220,7 +220,6 @@ function ligarArrasteDeFora() {
         x: Math.round(evento.clientX * escala),
         y: Math.round(evento.clientY * escala),
         ctrl: evento.ctrlKey,
-        shift: evento.shiftKey,
       },
     };
 
@@ -252,6 +251,13 @@ let encerrarArraste = null;
  * (CF_HDROP com os caminhos reais), que e o que faz soltar no Explorer funcionar.
  */
 function iniciarArrasteExterno() {
+  // Arrastar item é do app (quem entrega o arquivo é o host). O Chromium, sozinho,
+  // começaria um arraste nativo da miniatura (<img>) e cancelaria o ponteiro — era por
+  // isso que vídeo e imagem não arrastavam.
+  area.addEventListener('dragstart', (evento) => {
+    if (evento.target.closest?.('[data-caminho]')) evento.preventDefault();
+  });
+
   area.addEventListener('pointerdown', (evento) => {
     if (evento.button !== 0) return;
 
@@ -305,7 +311,12 @@ function iniciarArrasteExterno() {
 
       if (item && (item.Pasta ?? item.pasta)) {
         call('arraste.cancelar').catch(() => {});
-        entregarEm(item.Caminho ?? item.caminho, caminhos, e.ctrlKey || copiar);
+        const destino = item.Caminho ?? item.caminho;
+
+        // Mesma unidade move; outra unidade copia — e a conversão de vídeo entra nos dois
+        // casos, porque a operação passa pelo mesmo caminho do colar.
+        const mover = !(e.ctrlKey || copiar) && mesmaUnidade(caminhos[0], destino);
+        colarCaminhos(caminhos, mover, destino).catch(() => {});
       } else {
         // Deixa o host decidir: outra janela sob o cursor recebe os arquivos.
         call('arraste.soltar').catch(() => {});
@@ -335,19 +346,29 @@ function iniciarArrasteExterno() {
   });
 }
 
-async function entregarEm(destino, caminhos, copiar) {
-  const opId = `arraste-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  try {
-    if (copiar) {
-      await call('fs.copy', { origens: caminhos, destino, opId });
-    } else {
-      await call('fs.move', { origens: caminhos, destino, opId });
-    }
-  } catch (erro) {
-    ui.toast(t('erro.geral', { mensagem: erro.message }), 'erro');
-  }
+/**
+ * O arraste move **dentro da mesma unidade** e copia entre unidades, como o Explorer.
+ * Mover entre volumes é, por baixo, uma cópia seguida de apagar o original: se algo falhar
+ * no meio (disco cheio, rede caindo) o arquivo pode sumir. Sem raiz reconhecível, o
+ * palpite seguro é copiar.
+ */
+function mesmaUnidade(origem, destino) {
+  const raiz = (caminho) => {
+    if (!caminho) return null;
 
-  recarregar();
+    const limpo = String(caminho).replace(/\//g, '\\');
+
+    if (limpo.startsWith('\\\\')) {
+      const partes = limpo.slice(2).split('\\').filter(Boolean);
+      return partes.length >= 2 ? `\\\\${partes[0]}\\${partes[1]}`.toLowerCase() : null;
+    }
+
+    const disco = /^([a-z]):/i.exec(limpo);
+    return disco ? `${disco[1].toLowerCase()}:` : null;
+  };
+
+  const a = raiz(origem);
+  return Boolean(a) && a === raiz(destino);
 }
 
 function mostrarAlvoArraste(dados) {
@@ -1636,8 +1657,8 @@ export async function colar() {
   await colarCaminhos(caminhos, recortarItens);
 }
 
-async function colarCaminhos(caminhos, recortarItens) {
-  const destino = state.caminho;
+async function colarCaminhos(caminhos, recortarItens, destinoExplicito = null) {
+  const destino = destinoExplicito ?? state.caminho;
   const opId = `colar-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const videos = caminhos.filter((c) => fmt.ehVideo(c));
   const converterConfigurado = videos.length > 0 && state.config.ConverterVideoAoColar !== false;
