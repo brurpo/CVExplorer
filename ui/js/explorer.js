@@ -135,6 +135,11 @@ export function iniciarExplorer() {
   // Outra janela comecou um arraste: se o cursor estiver sobre esta, mostra o alvo.
   on('arraste.estado', (dados) => mostrarAlvoArraste(dados));
   on('arraste.erro', (dados) => {
+    // Um arraste que falhou também deixa o ponteiro sem voltar: desarma o estado aqui para o
+    // próximo clique não repetir a operação.
+    arrasteAtivo = false;
+    encerrarArraste?.();
+
     if (dados?.mensagem) ui.toast(dados.mensagem, 'erro', 7000);
   });
   on('dir.refresh', (dados) => {
@@ -294,12 +299,19 @@ function iniciarArrasteExterno() {
     const soltar = (e) => {
       const estavaAtivo = arrasteAtivo;
       encerrar();
-      if (!estavaAtivo) return;
+      if (!estavaAtivo || caminhos.length === 0) return;
 
       // Soltou em cima dos Favoritos: fixa o item em vez de mover na pasta.
       if (lateral.alvoFavoritos(e.clientX, e.clientY)) {
         call('arraste.cancelar').catch(() => {});
         lateral.adicionarFavoritos(caminhos);
+        return;
+      }
+
+      // Soltou fora da lista (barra de título, lateral, barra de status): só cancela. Mover
+      // arquivo tem de ser sempre um gesto explícito sobre a grade ou sobre uma pasta.
+      if (!area.contains(document.elementFromPoint(e.clientX, e.clientY))) {
+        call('arraste.cancelar').catch(() => {});
         return;
       }
 
@@ -378,14 +390,14 @@ function mostrarAlvoArraste(dados) {
   if (!dados?.ativo) {
     if (overlay) overlay.hidden = true;
 
-    // O arraste virou um arraste do Windows (saiu do app): o ponteiro nao volta mais para
-    // ca, entao encerra o arraste daqui e, se o destino levou os arquivos, recarrega.
-    if (dados?.externo) {
-      arrasteAtivo = false;
-      encerrarArraste?.();
+    // Qualquer fim de arraste (saiu do app, foi solto numa pasta daqui, foi cancelado) chega
+    // assim: o ponteiro nao volta para a interface, entao o estado do arraste tem de ser
+    // encerrado aqui. Sem isso ele ficava armado e o proximo clique solto — arrastar a janela,
+    // por exemplo — movia os arquivos do arraste anterior de novo.
+    arrasteAtivo = false;
+    encerrarArraste?.();
 
-      if (dados.moveu) recarregar();
-    }
+    if (dados?.externo && dados.moveu) recarregar();
 
     return;
   }

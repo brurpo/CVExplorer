@@ -135,9 +135,9 @@ No estilo do Explorer, sem lista de projetos:
 - **Encaixe do Windows (Aero Snap)**: mesmo sem moldura nativa, a janela devolve `WS_THICKFRAME` nos
   `CreateParams` — é isso que habilita encaixar nas metades/quartos da tela pelas bordas. Maximizada
   respeita a barra de tarefas (`WM_GETMINMAXINFO` na área de trabalho do monitor).
-- **Redimensionar pelas bordas**: como o WebView2 cobre a janela inteira, o `WM_NCHITTEST` do
-  formulário não recebe o ponteiro na borda — a interface detecta os 6 px finais de cada lado/canto e
-  pede ao host (`app.janelaRedimensionar`) o loop nativo de redimensionamento.
+- **Arraste de arquivos só solta onde é gesto explícito**: o fim de qualquer arraste é desarmado pelo
+  evento `arraste.estado`, e soltar fora da lista (barra de título, lateral, barra de status) apenas
+  cancela — nenhum clique posterior repete o move da última vez.
 - **Seleção em azul-claro e hover com contorno**: item selecionado usa o acento (`rgba(90,169,230,.26)`
   + contorno interno), não cinza; o hover clareia o fundo e desenha o mesmo contorno, na grade e na lista.
 - **Seleção por laço**: arraste no vazio para marcar vários itens de uma vez (com `Ctrl` soma à
