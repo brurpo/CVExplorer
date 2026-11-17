@@ -1745,6 +1745,10 @@ async function colarCaminhos(caminhos, recortarItens, destinoExplicito = null) {
   state.clip = { caminhos: [], recortar: false };
   state.cortados.clear();
   recarregar();
+
+  // A operação terminou (e ela pode ter aberto diálogos): agora as outras janelas podem
+  // se atualizar. A origem de um arraste só vê o que saiu da pasta dela depois disto.
+  call('dir.atualizarTudo').catch(() => {});
 }
 
 // ---------- busca ----------

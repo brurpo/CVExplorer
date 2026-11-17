@@ -156,9 +156,15 @@ internal static class Win32
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    /// <summary>Traz a janela ja aberta para frente (segunda execucao do app).</summary>
+    /// <summary>
+    /// Traz a janela ja aberta para frente (segunda execucao do app). So restaura se ela
+    /// estiver minimizada: SW_RESTORE numa janela maximizada a desmaximizaria.
+    /// </summary>
     public static void TrazerParaFrente(string titulo)
     {
         var janela = FindWindow(null, titulo);
@@ -167,7 +173,11 @@ internal static class Win32
             return;
         }
 
-        ShowWindow(janela, 9); // SW_RESTORE
+        if (IsIconic(janela))
+        {
+            ShowWindow(janela, 9); // SW_RESTORE
+        }
+
         SetForegroundWindow(janela);
     }
 }

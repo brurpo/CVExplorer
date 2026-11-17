@@ -28,6 +28,12 @@ public sealed class AbasService
     private Janela? _alvo;
     private int _executando;
 
+    /// <summary>
+    /// Distância entre o cursor e o canto da janela destacada, congelada no instante em que
+    /// ela nasce: é com esse deslocamento que ela passa a seguir o mouse.
+    /// </summary>
+    private Size _deslocamento;
+
     private enum Modo
     {
         Nenhum,
@@ -78,6 +84,21 @@ public sealed class AbasService
     /// <summary>O arraste terminou dentro da própria janela: nada a fazer no host.</summary>
     public void Cancelar()
     {
+        // Depois de destacar, quem manda no arraste é o host: quando a janela nova é
+        // ativada, a interface de origem perde o ponteiro e manda "cancelar" no meio do
+        // arraste — encerrar aqui faria a janela parar de seguir o mouse com o botão
+        // ainda apertado. O fim de verdade é detectado pelo rastreio (botão solto).
+        Janela? destacada;
+        lock (_gate)
+        {
+            destacada = _destacada;
+        }
+
+        if (destacada is { IsDisposed: false })
+        {
+            return;
+        }
+
         LimparAlvo();
         Encerrar();
         _host.EmitTodos("abas.arraste", new { ativo = false });
@@ -111,6 +132,7 @@ public sealed class AbasService
             _abas = new List<string>();
             _destacada = null;
             _alvo = null;
+            _deslocamento = Size.Empty;
         }
     }
 
@@ -237,6 +259,16 @@ public sealed class AbasService
         }
 
         Marcar(NaFaixaDeAbas(x, y, destacada.Id), destacada.Id);
+
+        // A janela destacada acompanha o mouse enquanto o botão estiver pressionado.
+        if (!destacada.IsDisposed)
+        {
+            var alvo = new Point(x - _deslocamento.Width, y - _deslocamento.Height);
+            if (destacada.Location != alvo)
+            {
+                destacada.Location = alvo;
+            }
+        }
     }
 
     /// <summary>O ponto está na barra de abas desta janela? (é o que mantém o arraste como reordenação)</summary>
@@ -282,6 +314,10 @@ public sealed class AbasService
         lock (_gate)
         {
             _destacada = nova;
+
+            // Onde o cursor pegou a janela nova: manter este deslocamento é o que faz ela
+            // acompanhar o mouse até o botão ser solto (como uma aba destacada no Chrome).
+            _deslocamento = new Size(x - nova.Bounds.Left, y - nova.Bounds.Top);
         }
 
         // A origem perdeu as abas: quem as tem agora é a janela nova.

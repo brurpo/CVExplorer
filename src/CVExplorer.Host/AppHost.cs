@@ -164,12 +164,21 @@ public sealed class AppHost
         return _ambiente;
     }
 
+    /// <summary>
+    /// Traz **esta** janela para frente. Nada de FindWindow por titulo (pegava outra
+    /// janela) nem de SW_RESTORE: restaurar uma janela maximizada a desmaximizava — era o
+    /// que "redimensionava" a janela ao soltar arquivos vindos do Explorer.
+    /// </summary>
     public void TrazerParaFrente(Janela janela)
     {
         try
         {
+            if (janela.IsDisposed)
+            {
+                return;
+            }
+
             janela.Activate();
-            Native.Win32.TrazerParaFrente(AppInfo.Nome);
         }
         catch (Exception ex)
         {
@@ -196,13 +205,9 @@ public sealed class AppHost
 
         alvo.Enviar("os.drop", new { caminhos, mover });
 
-        // A janela de origem ganhou ou perdeu itens: a lista dela precisa se atualizar.
-        var origem = JanelaDoContexto ?? JanelaAtiva;
-        if (origem is not null && !ReferenceEquals(origem, alvo))
-        {
-            origem.Enviar("dir.refresh", new { caminho = origem.PastaAtual });
-        }
-
+        // A lista da janela de origem so muda quando a operacao da janela alvo termina
+        // (ela pode abrir dialogo de conflito ou de conversao). Por isso quem avisa e a
+        // propria janela alvo, no fim do colar: ver "dir.atualizar" em Commands.cs.
         return Task.CompletedTask;
     }
 

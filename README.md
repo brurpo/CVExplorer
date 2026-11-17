@@ -151,9 +151,14 @@ No estilo do Explorer, sem lista de projetos:
   tira uma aba da seleção e `Shift+clique` seleciona o intervalo. Arrastar as abas dentro da barra
   **reordena na hora**, com a etiqueta do que está sendo levado colada no cursor. **Saindo da barra**
   (para a grade, para outra janela ou para fora do app) a janela nova nasce já ali, embaixo do
-  cursor, com as abas; soltar sobre a barra de outra janela junta as abas lá. Arrastar a **barra de
+  cursor, e **continua acompanhando o mouse** enquanto o botão estiver apertado — o cursor mantém a
+  mesma pega dentro da janela, como uma aba destacada do Chrome; soltar sobre a barra de outra janela
+  junta as abas lá. Arrastar a **barra de
   título** de uma janela sobre a barra de abas de outra funde as duas (a janela arrastada some e as
-  abas dela entram na outra).
+  abas dela entram na outra). A interface de origem perde o ponteiro quando a janela nova é ativada
+  (o navegador manda `pointercancel`); nesse ponto quem manda no arraste é o host, então o
+  "cancelar" que chega atrasado é ignorado — antes ele encerrava o arraste e a janela congelava no
+  lugar onde nasceu.
 - **Pastas maiores**: clique com o botão direito numa pasta → **Pastas maiores…** abre uma janela
   com o tamanho de cada subpasta direta, do maior para o menor (barra, tamanho, % do total e
   contagem de arquivos). A varredura roda em paralelo no host; duplo clique numa linha abre aquela
@@ -165,7 +170,10 @@ No estilo do Explorer, sem lista de projetos:
   Também move/copia para uma pasta solta dentro da mesma janela. Como cada WebView2 captura o
   mouse, quem acompanha o cursor é o host (`GetCursorPos`), não o navegador. Quem faz a operação é a
   **janela de destino**, pelo mesmo caminho do colar — então vídeo passa pelo diálogo de conversão e
-  nome repetido passa pelo diálogo de conflito, sem nada ser sobrescrito.
+  nome repetido passa pelo diálogo de conflito, sem nada ser sobrescrito. **A lista da janela de
+  origem se atualiza sozinha quando a operação termina** (`dir.atualizarTudo`): atualizar na hora do
+  soltar não adiantava, porque os arquivos ainda estavam lá (a janela alvo podia estar esperando uma
+  resposta do diálogo).
 - **Mover só dentro da mesma unidade**: arrastar **entre unidades é sempre cópia** (mesmo com
   `Shift`). Mover entre volumes é, por baixo, uma cópia seguida de apagar o original: se algo falhar
   no meio (disco cheio, rede caindo) o arquivo iria junto. A regra vale para os três caminhos de
@@ -196,7 +204,9 @@ No estilo do Explorer, sem lista de projetos:
   drop do próprio Chromium (`AllowExternalDrop = true`) em vez do arraste do Windows Forms, que
   nunca chegaria ao formulário (o alvo de drop fica na janela filha do WebView2, em outro processo).
   O cursor mostra sempre *"copiar"*: quem executa a operação é o app, e informar *move* ao programa
-  de origem faria ele apagar os arquivos por conta própria.
+  de origem faria ele apagar os arquivos por conta própria. A janela que recebe o drop só é trazida
+  para frente (`Activate`), **sem mexer no tamanho**: antes o app chamava `ShowWindow(SW_RESTORE)`,
+  que devolvia ao tamanho normal uma janela maximizada — soltar um arquivo "redimensionava" a janela.
 - Cópia progressiva com cancelamento; nomes nunca colidem (`arquivo (2).ext`). O card de progresso
   desaparece ao terminar — operação encerrada não pode ser "ressuscitada" por um evento atrasado do
   host (era o que deixava *"Movendo 1 item"* parado em 100%).

@@ -614,6 +614,19 @@ public static class Commands
             return ResultadoOperacao(resultado);
         }, operacao: true);
 
+        // Depois de uma operacao que mexe em arquivos, toda janela se atualiza sozinha: a
+        // janela de origem de um arraste precisa ver o que saiu da pasta dela, e duas
+        // janelas na mesma pasta nao podem ficar mostrando listas diferentes.
+        Add("dir.atualizarTudo", (_, _) =>
+        {
+            foreach (var janela in host.Janelas.Where(j => j is { IsDisposed: false }))
+            {
+                janela.Enviar("dir.refresh", new { caminho = janela.PastaAtual });
+            }
+
+            return Task.FromResult<object?>(new { ok = true });
+        });
+
         Add("fs.rename", (args, _) =>
         {
             var caminho = Str(args, "caminho");
