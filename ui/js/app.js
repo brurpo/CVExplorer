@@ -188,6 +188,53 @@ async function iniciar() {
     btnMax.click();
   });
 
+  // Redimensionar pelas bordas: o WebView2 cobre a janela inteira, então o WM_NCHITTEST do
+  // formulário quase não vê o ponteiro na borda e a área com cursor de redimensionar ficava
+  // fina demais. A detecção fica aqui e o host inicia o loop nativo.
+  // O topo é mais estreito de propósito: o resto da barra de título continua arrastando a janela.
+  const MARGEM_LADO = 10;
+  const MARGEM_TOPO = 6;
+  const CURSOR_BORDA = {
+    esquerda: 'ew-resize',
+    direita: 'ew-resize',
+    topo: 'ns-resize',
+    fundo: 'ns-resize',
+    'topo-esquerda': 'nwse-resize',
+    'fundo-direita': 'nwse-resize',
+    'topo-direita': 'nesw-resize',
+    'fundo-esquerda': 'nesw-resize',
+  };
+
+  const bordaEm = (evento) => {
+    if (document.body.classList.contains('janela-maximizada')) return '';
+    const esquerda = evento.clientX <= MARGEM_LADO;
+    const direita = evento.clientX >= window.innerWidth - MARGEM_LADO - 1;
+    const topo = evento.clientY <= MARGEM_TOPO;
+    const fundo = evento.clientY >= window.innerHeight - MARGEM_LADO - 1;
+    if (topo) return esquerda ? 'topo-esquerda' : direita ? 'topo-direita' : 'topo';
+    if (fundo) return esquerda ? 'fundo-esquerda' : direita ? 'fundo-direita' : 'fundo';
+    return esquerda ? 'esquerda' : direita ? 'direita' : '';
+  };
+
+  document.addEventListener(
+    'pointerdown',
+    (evento) => {
+      if (evento.button !== 0) return;
+      const borda = bordaEm(evento);
+      if (!borda) return;
+      evento.preventDefault();
+      evento.stopPropagation();
+      janelaAcao('Redimensionar', { borda });
+    },
+    true,
+  );
+
+  document.addEventListener('pointermove', (evento) => {
+    if (evento.buttons !== 0) return;
+    const borda = bordaEm(evento);
+    document.documentElement.style.cursor = borda ? CURSOR_BORDA[borda] : '';
+  });
+
   on('janela.estado', (dados) => definirMaximizada(dados?.maximizada));
 
   document.addEventListener('recarregar', () => explorer.recarregar());

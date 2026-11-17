@@ -135,6 +135,10 @@ No estilo do Explorer, sem lista de projetos:
 - **Encaixe do Windows (Aero Snap)**: mesmo sem moldura nativa, a janela devolve `WS_THICKFRAME` nos
   `CreateParams` — é isso que habilita encaixar nas metades/quartos da tela pelas bordas. Maximizada
   respeita a barra de tarefas (`WM_GETMINMAXINFO` na área de trabalho do monitor).
+- **Redimensionar pelas bordas**: o `WM_NCHITTEST` do formulário cobre 8 px lógicos e, como o WebView2
+  fica por cima, a interface também detecta a faixa (10 px CSS nos lados e no fundo, 6 px no topo para
+  não comer a área de arrastar da barra de título) e pede ao host (`app.janelaRedimensionar`) o loop
+  nativo de redimensionamento, com o cursor certo em cada borda e canto.
 - **Arraste de arquivos só solta onde é gesto explícito**: o fim de qualquer arraste é desarmado pelo
   evento `arraste.estado`, e soltar fora da lista (barra de título, lateral, barra de status) apenas
   cancela — nenhum clique posterior repete o move da última vez.

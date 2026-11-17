@@ -451,7 +451,7 @@ public sealed class Janela : Form
                 base.WndProc(ref m);
                 var tela = new Point((short)(m.LParam.ToInt64() & 0xFFFF), (short)((m.LParam.ToInt64() >> 16) & 0xFFFF));
                 var cliente = PointToClient(tela);
-                var borda = (int)Math.Round(5 * DeviceDpi / 96.0);
+                var borda = (int)Math.Round(8 * DeviceDpi / 96.0);
                 var esquerda = cliente.X <= borda;
                 var direita = cliente.X >= ClientSize.Width - borda;
                 var topo = cliente.Y <= borda;
@@ -514,6 +514,43 @@ public sealed class Janela : Form
     }
 
     public void MinimizarJanela() => WindowState = FormWindowState.Minimized;
+
+    /// <summary>
+    /// Inicia o redimensionamento nativo agarrando a borda informada ("esquerda", "direita",
+    /// "topo", "fundo" e as combinações). O WebView2 cobre a janela toda, então o
+    /// WM_NCHITTEST do formulário quase não vê o ponteiro na borda: quem detecta a agarra é a
+    /// interface, e aqui só começamos o mesmo loop que o Windows usaria.
+    /// </summary>
+    public void RedimensionarJanela(string borda)
+    {
+        if (WindowState != FormWindowState.Normal)
+        {
+            return;
+        }
+
+        var codigo = borda?.ToLowerInvariant() switch
+        {
+            "esquerda" => HTLEFT,
+            "direita" => HTRIGHT,
+            "topo" => HTTOP,
+            "fundo" => HTBOTTOM,
+            "topo-esquerda" => HTTOPLEFT,
+            "topo-direita" => HTTOPRIGHT,
+            "fundo-esquerda" => HTBOTTOMLEFT,
+            "fundo-direita" => HTBOTTOMRIGHT,
+            _ => 0,
+        };
+
+        if (codigo == 0)
+        {
+            return;
+        }
+
+        ReleaseCapture();
+
+        // O loop de redimensionamento bloqueia até soltar: sai da thread do IPC primeiro.
+        BeginInvoke(() => SendMessage(Handle, WM_NCLBUTTONDOWN, (IntPtr)codigo, IntPtr.Zero));
+    }
 
     /// <summary>
     /// Fecha sem passar pelo que a interface faria (a janela temporária do arraste de abas
