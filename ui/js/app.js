@@ -194,16 +194,6 @@ async function iniciar() {
   // O topo é mais estreito de propósito: o resto da barra de título continua arrastando a janela.
   const MARGEM_LADO = 10;
   const MARGEM_TOPO = 6;
-  const CURSOR_BORDA = {
-    esquerda: 'ew-resize',
-    direita: 'ew-resize',
-    topo: 'ns-resize',
-    fundo: 'ns-resize',
-    'topo-esquerda': 'nwse-resize',
-    'fundo-direita': 'nwse-resize',
-    'topo-direita': 'nesw-resize',
-    'fundo-esquerda': 'nesw-resize',
-  };
 
   const bordaEm = (evento) => {
     if (document.body.classList.contains('janela-maximizada')) return '';
@@ -216,6 +206,13 @@ async function iniciar() {
     return esquerda ? 'esquerda' : direita ? 'direita' : '';
   };
 
+  // O cursor sai no <html> como atributo: cada elemento da interface declara o proprio cursor
+  // (cursor: default em quase tudo), e so o !important das regras de app.css vence isso.
+  const marcarBorda = (borda) => {
+    if (borda) document.documentElement.dataset.borda = borda;
+    else delete document.documentElement.dataset.borda;
+  };
+
   document.addEventListener(
     'pointerdown',
     (evento) => {
@@ -224,6 +221,7 @@ async function iniciar() {
       if (!borda) return;
       evento.preventDefault();
       evento.stopPropagation();
+      marcarBorda('');
       janelaAcao('Redimensionar', { borda });
     },
     true,
@@ -231,9 +229,12 @@ async function iniciar() {
 
   document.addEventListener('pointermove', (evento) => {
     if (evento.buttons !== 0) return;
-    const borda = bordaEm(evento);
-    document.documentElement.style.cursor = borda ? CURSOR_BORDA[borda] : '';
+    marcarBorda(bordaEm(evento));
   });
+
+  // Saiu da janela ou perdeu o foco: o atributo nao pode ficar preso.
+  document.addEventListener('pointerleave', () => marcarBorda(''));
+  window.addEventListener('blur', () => marcarBorda(''));
 
   on('janela.estado', (dados) => definirMaximizada(dados?.maximizada));
 

@@ -2056,3 +2056,29 @@ body.aba-arrastando .aba { transition: transform .08s ease-out; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Faixa de redimensionamento da janela (deteccao em app.js). O cursor tem de vencer o cursor
+   proprio de cada elemento da interface, por isso o inherit + !important em tudo. */
+html[data-borda] * {
+  cursor: inherit !important;
+}
+
+html[data-borda='esquerda'],
+html[data-borda='direita'] {
+  cursor: ew-resize !important;
+}
+
+html[data-borda='topo'],
+html[data-borda='fundo'] {
+  cursor: ns-resize !important;
+}
+
+html[data-borda='topo-esquerda'],
+html[data-borda='fundo-direita'] {
+  cursor: nwse-resize !important;
+}
+
+html[data-borda='topo-direita'],
+html[data-borda='fundo-esquerda'] {
+  cursor: nesw-resize !important;
+}
