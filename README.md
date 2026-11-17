@@ -131,9 +131,13 @@ No estilo do Explorer, sem lista de projetos:
 ### Explorador
 - Grade/lista com renderização virtualizada (pastas com milhares de itens continuam fluidas).
 - **Barra de título própria**: a moldura do Windows sai de cena e entra uma faixa fina (30 px) com o
-  logo, o nome do app e minimizar/maximizar/fechar. Arrasta pela faixa, duplo clique maximiza, e as
-  bordas da janela continuam redimensionáveis por `WM_NCHITTEST` — maximizada respeita a barra de
-  tarefas (`WM_GETMINMAXINFO` na área de trabalho do monitor).
+  logo, o nome do app e minimizar/maximizar/fechar. Arrasta pela faixa, duplo clique maximiza.
+- **Encaixe do Windows (Aero Snap)**: mesmo sem moldura nativa, a janela devolve `WS_THICKFRAME` nos
+  `CreateParams` — é isso que habilita encaixar nas metades/quartos da tela pelas bordas. Maximizada
+  respeita a barra de tarefas (`WM_GETMINMAXINFO` na área de trabalho do monitor).
+- **Redimensionar pelas bordas**: como o WebView2 cobre a janela inteira, o `WM_NCHITTEST` do
+  formulário não recebe o ponteiro na borda — a interface detecta os 6 px finais de cada lado/canto e
+  pede ao host (`app.janelaRedimensionar`) o loop nativo de redimensionamento.
 - **Seleção em azul-claro e hover com contorno**: item selecionado usa o acento (`rgba(90,169,230,.26)`
   + contorno interno), não cinza; o hover clareia o fundo e desenha o mesmo contorno, na grade e na lista.
 - **Seleção por laço**: arraste no vazio para marcar vários itens de uma vez (com `Ctrl` soma à

@@ -96,6 +96,15 @@ public static class Commands
             return Task.FromResult<object?>(new { ok = true });
         });
 
+        // Redimensionar pela borda: o WebView2 cobre a janela inteira, então o
+        // WM_NCHITTEST do formulário nunca vê o ponteiro na borda. A interface avisa em qual
+        // borda o usuário agarrou e o host inicia o loop nativo de redimensionamento.
+        Add("app.janelaRedimensionar", (args, _) =>
+        {
+            JanelaDoContexto(host, args)?.RedimensionarJanela(Str(args, "borda"));
+            return Task.FromResult<object?>(new { ok = true });
+        });
+
         Add("abas.arrastarIniciar", (args, _) =>
         {
             host.Abas.Iniciar(host.JanelaDoContexto, StrArray(args, "abas"));

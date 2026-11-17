@@ -45,6 +45,12 @@ public sealed class Janela : Form
     private const int HTBOTTOMRIGHT = 17;
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
 
+    private const int WS_POPUP = unchecked((int)0x80000000);
+    private const int WS_THICKFRAME = 0x00040000;
+    private const int WS_MINIMIZEBOX = 0x00020000;
+    private const int WS_MAXIMIZEBOX = 0x00010000;
+    private const int WS_SYSMENU = 0x00080000;
+
     public Janela(
         AppHost host,
         bool primaria,
@@ -348,6 +354,24 @@ public sealed class Janela : Form
         AplicarBarraTituloEscura();
     }
 
+    // FormBorderStyle.None deixa a janela como WS_POPUP, e o Windows só oferece encaixe (Aero
+    // Snap) e redimensionamento quando existe WS_THICKFRAME. A moldura nativa continua invisível
+    // porque o WM_NCCALCSIZE devolve 0; aqui só devolvemos os estilos que o Windows consulta.
+    // Precisa ser em CreateParams: o WinForms reaplica os estilos ao restaurar o WindowState.
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var cp = base.CreateParams;
+            cp.Style = (cp.Style & ~WS_POPUP)
+                | WS_THICKFRAME
+                | WS_MINIMIZEBOX
+                | WS_MAXIMIZEBOX
+                | WS_SYSMENU;
+            return cp;
+        }
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT
     {
@@ -490,6 +514,43 @@ public sealed class Janela : Form
     }
 
     public void MinimizarJanela() => WindowState = FormWindowState.Minimized;
+
+    /// <summary>
+    /// Inicia o redimensionamento nativo agarrando a borda informada ("esquerda", "direita",
+    /// "topo", "fundo" e as combinações). O WebView2 cobre a janela toda, então o
+    /// WM_NCHITTEST do formulário nunca recebe o ponteiro na borda: quem detecta a agarra é a
+    /// interface, e aqui só começamos o mesmo loop que o Windows usaria.
+    /// </summary>
+    public void RedimensionarJanela(string borda)
+    {
+        if (WindowState != FormWindowState.Normal)
+        {
+            return;
+        }
+
+        var codigo = borda?.ToLowerInvariant() switch
+        {
+            "esquerda" => HTLEFT,
+            "direita" => HTRIGHT,
+            "topo" => HTTOP,
+            "fundo" => HTBOTTOM,
+            "topo-esquerda" => HTTOPLEFT,
+            "topo-direita" => HTTOPRIGHT,
+            "fundo-esquerda" => HTBOTTOMLEFT,
+            "fundo-direita" => HTBOTTOMRIGHT,
+            _ => 0,
+        };
+
+        if (codigo == 0)
+        {
+            return;
+        }
+
+        ReleaseCapture();
+
+        // O loop de redimensionamento bloqueia até soltar: sai da thread do IPC primeiro.
+        BeginInvoke(() => SendMessage(Handle, WM_NCLBUTTONDOWN, (IntPtr)codigo, IntPtr.Zero));
+    }
 
     /// <summary>
     /// Fecha sem passar pelo que a interface faria (a janela temporária do arraste de abas
